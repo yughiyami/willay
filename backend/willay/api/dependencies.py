@@ -250,6 +250,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         district_collection=_district_collection(world, data),
         backtest_results=backtest_results,
         reviewed_templates=reviewed_templates_from_env(env),
+        derived_dir=data.derived(),
     )
 
 
