@@ -205,3 +205,10 @@ def test_intakes_use_their_own_wider_snap_tolerance_because_osm_centres_are_appr
 def test_intake_snap_tolerance_is_validated():
     with pytest.raises(ValueError):
         ExposureConfig(intake_snap_tolerance_m=-1)
+
+
+def test_reached_settlement_reports_its_location_for_map_display():
+    (c,) = downstream_exposure(meridian_path(), [settlement_at(10_000)], CFG).contributions
+    data = c.to_dict()
+    assert data["lon"] == pytest.approx(LON)
+    assert data["lat"] == pytest.approx(-11.8 - 10_000 / 111_195.0)
