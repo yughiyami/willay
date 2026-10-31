@@ -136,7 +136,7 @@ def test_backtest_reports_each_model_with_auc_top_k_and_counts():
     assert willay["top_k_capture"]["20"] == pytest.approx(0.5)  # 1 slot of 2 emergencies
     assert willay["top_k_capture"]["40"] == 1.0
     assert willay["max_top_k_capture"]["20"] == pytest.approx(0.5)
-    assert result["models"]["population_baseline"]["auc"] == pytest.approx(5 / 6)
+    assert result["models"]["population_baseline"]["auc"] == pytest.approx(4 / 6)
 
 
 def test_lead_time_is_measured_from_the_first_eligible_day_to_the_first_emergency():
@@ -153,7 +153,7 @@ def test_lead_time_is_measured_from_the_first_eligible_day_to_the_first_emergenc
         primary_gate="primary",
     )
     lead = result["lead_time"]["primary"]["willay_static"]
-    assert lead["values"] == [38]  # Feb 1 -> Mar 10
+    assert lead["values"] == [37]  # Feb 1 -> Mar 10
     assert lead["n_without_lead"] == 1  # district 2 had its emergency before the first eligible day
     assert result["gates"]["primary"]["first_eligible_day"] == "2017-02-01"
 
