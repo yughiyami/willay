@@ -52,6 +52,14 @@ class RainfallAnomaly(Enum):
     ABOVE_NORMAL = "above_normal"
 
 
+class EnfenAlertStatus(Enum):
+    """ENFEN alert system state for the coastal El Nino."""
+
+    NOT_ACTIVE = "not_active"
+    WATCH = "watch"
+    ALERT = "alert"
+
+
 class SenamhiLevel(OrderedEnum):
     """SENAMHI warning level for a province."""
 
@@ -139,6 +147,8 @@ class Settlement:
     households: int
     has_water_intake: bool = False
     safe_point: str | None = None
+    ubigeo: str = ""
+    district: str = ""
 
     def __post_init__(self) -> None:
         _check_coordinates(self.lon, self.lat)
@@ -216,3 +226,25 @@ class Emergency:
     def __post_init__(self) -> None:
         if len(self.ubigeo) != 6 or not self.ubigeo.isdigit():
             raise ValueError(f"ubigeo must be 6 digits, got '{self.ubigeo}'")
+
+
+@dataclass(frozen=True)
+class EnfenBulletin:
+    """One ENFEN communique: the alert state and the forecast coastal El Nino magnitude."""
+
+    date: date
+    number: str
+    alert_status: EnfenAlertStatus
+    magnitude: EnfenMagnitude
+    source_text: str = ""
+
+
+@dataclass(frozen=True)
+class DailyRain:
+    """Daily rainfall summary over the basin (CHIRPS, 5 km: smooths local peaks)."""
+
+    date: date
+    basin_mean_mm: float
+    basin_max_cell_mm: float
+    sierra_mean_mm: float
+    bbox_mean_mm: float
