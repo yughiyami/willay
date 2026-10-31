@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from willay.api.dependencies import AppDependencies, default_dependencies
 from willay.api.schemas import BacktestIn, EvaluateAlertIn
+from willay.api.agent_routes import register_agent_routes
 from willay.api.watch_routes import register_watch_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
 from willay.ports.templates import TemplateNotAvailable
@@ -248,6 +249,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
         return backtest_response(event, top_k)
 
     register_watch_routes(app, deps)
+    register_agent_routes(app, deps, lambda: ranked_sites())
 
     return app
 

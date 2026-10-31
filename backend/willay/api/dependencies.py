@@ -39,6 +39,7 @@ from willay.ports.site_repository import SiteRepositoryPort
 ENV_MODE = "WILLAY_DATA_MODE"
 ENV_ANOMALY = "WILLAY_SEASONAL_ANOMALY"
 ENV_TEMPLATES_DIR = "WILLAY_REVIEWED_TEMPLATES_DIR"
+ENV_META_ENABLED = "WILLAY_META_ENABLED"
 DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "reviewed"
 REAL_DISCLAIMER = (
     "Real open data (INGEMMET, ANA, OSM, Copernicus DEM). Tailings risk attributes are sparse, water intakes are "
@@ -252,17 +253,41 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
     )
 
 
+def attach_meta_from_env(deps: AppDependencies, environ: Mapping[str, str] | None = None) -> AppDependencies:
+    """Wire the live Meta Model API into every capability, only when WILLAY_META_ENABLED=1.
+
+    The adapter reads META_API_KEY from `.env`/the environment at runtime (never printed) and logs every call
+    to <data>/derived/meta_usage.jsonl under a spend budget. A missing key leaves the app running without it.
+    """
+    env = os.environ if environ is None else environ
+    if env.get(ENV_META_ENABLED, "0").strip() != "1":
+        return deps
+    from willay.adapters import meta_model_api  # local import: the adapter is optional at start-up
+
+    try:
+        adapter = meta_model_api.load_adapter_from_env()
+    except meta_model_api.MissingApiKeyError:
+        return deps
+    deps.agent_model = adapter
+    deps.transcriber = adapter
+    deps.video_segmenter = adapter
+    deps.image_generator = adapter
+    deps.extractor = adapter
+    return deps
+
+
 def default_dependencies() -> AppDependencies:
     mode = os.environ.get(ENV_MODE, "real").strip().lower()
     if mode == "synthetic":
-        return synthetic_dependencies()
+        return attach_meta_from_env(synthetic_dependencies())
     if mode == "real":
-        return real_dependencies()
+        return attach_meta_from_env(real_dependencies())
     raise ValueError(f"{ENV_MODE} must be 'real' or 'synthetic', got '{mode}'")
 
 
 __all__ = [
     "AppDependencies",
+    "attach_meta_from_env",
     "default_dependencies",
     "real_dependencies",
     "synthetic_dependencies",
