@@ -128,7 +128,8 @@ def test_evaluate_by_site_id_returns_message_for_actionable_tier(client):
     message = body["message"]
     assert message["tier"] == "ATTENTION"
     assert "SYNTHETIC Tailings Alpha" in message["text"]
-    assert "does not replace" in message["text"]
+    assert "no las reemplaza" in message["text"]  # household messages default to Spanish
+    assert message["language"] == "es"
     assert message["rephrased"] is False
 
 
@@ -191,3 +192,25 @@ def test_backtest_rejects_invalid_top_k(client):
 def test_cors_allows_local_vite_origin(client):
     response = client.get("/health", headers={"Origin": "http://localhost:5173"})
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+def test_evaluate_message_can_be_requested_in_english(client):
+    body = client.post(
+        "/alerts/evaluate",
+        json={"site_id": client.get("/sites").json()["sites"][0]["id"], "senamhi_level": "orange", "language": "en"},
+    ).json()
+    assert "does not replace" in body["message"]["text"]
+    assert body["message"]["language"] == "en"
+
+
+def test_quechua_is_reported_not_available_without_a_human_reviewed_template(client):
+    response = client.post(
+        "/alerts/evaluate",
+        json={"site_id": client.get("/sites").json()["sites"][0]["id"], "senamhi_level": "orange", "language": "qu"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tier"] == "ATTENTION"  # the tier is still decided deterministically
+    assert body["message"]["available"] is False
+    assert body["message"]["language"] == "qu"
+    assert "human-reviewed" in body["message"]["reason"]
