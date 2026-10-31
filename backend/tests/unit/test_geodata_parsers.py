@@ -430,3 +430,20 @@ def test_enfen_bulletins_are_sorted_by_date():
         enfen_row("2017-01-24", "Vigilancia de El Nino costero", "weak"),
     ]
     assert [b.date for b in parse_enfen_rows(rows)] == [date(2017, 1, 24), date(2017, 2, 2)]
+
+
+def test_susceptibility_area_prefers_shape_area_because_area_km2_is_rounded_to_integers():
+    one_km2_in_deg2 = 1.0 / (111.32 * 0.9786 * 110.574)  # about 8.3e-5 deg2 at latitude -11.9
+    features = [
+        {
+            "geometry": None,
+            "properties": {"GRIDCODE": 5, "CD_DIST": "150107", "AREA_KM2": 0, "SHAPE.AREA": 3 * one_km2_in_deg2},
+        },
+        {
+            "geometry": None,
+            "properties": {"GRIDCODE": 2, "CD_DIST": "150107", "AREA_KM2": 0, "SHAPE.AREA": 1 * one_km2_in_deg2},
+        },
+    ]
+    summary = summarize_susceptibility_by_district(features)["150107"]
+    assert summary.high_share == pytest.approx(0.75, rel=0.01)
+    assert summary.total_area_km2 == pytest.approx(4.0, rel=0.02)
