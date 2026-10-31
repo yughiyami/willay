@@ -32,7 +32,7 @@ from willay.adapters.geodata.emergencies import (  # noqa: E402
 from willay.adapters.geodata.hazards import load_cenepred_csv  # noqa: E402
 from willay.adapters.geodata.timeseries import load_chirps_csv, load_enfen_csv  # noqa: E402
 from willay.application.district_backtest import (  # noqa: E402
-    BacktestEvent,
+    STANDARD_EVENTS,
     DistrictRow,
     PreparationGate,
     ScenarioBaseline,
@@ -42,10 +42,7 @@ from willay.application.district_backtest import (  # noqa: E402
 from willay.domain.district_score import DistrictFeatures  # noqa: E402
 from willay.domain.entities import EnfenMagnitude  # noqa: E402
 
-EVENTS = (
-    BacktestEvent("2017", date(2017, 1, 1), date(2017, 4, 30), signal_start=date(2017, 1, 1)),
-    BacktestEvent("2023", date(2023, 3, 1), date(2023, 3, 31), signal_start=date(2023, 2, 1)),
-)
+EVENTS = tuple(STANDARD_EVENTS.values())
 
 # Fixed before looking at any result. The primary gate is weak_rain80.
 GATES = (

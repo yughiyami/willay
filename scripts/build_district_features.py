@@ -4,7 +4,7 @@ Inputs (all read-only): INGEMMET susceptibility (area per class and district), C
 ANA settlements (Pob_rev), ANA critical points, IGN rivers, the D8 flow paths and the tailings CSV.
 District polygons come from the CENEPRED district layer (geometry and name only; none of its
 risk values is used here).
-Writes <data>/derived/district_features.json
+Writes <data>/derived/district_features.json and district_polygons.geojson (simplified, web only)
 
 Run:  .venv/Scripts/python -I scripts/build_district_features.py
 """
@@ -38,6 +38,8 @@ CRITICAL_POINT_BUFFER_M = 1_000.0
 # ANA critical points are designated year by year (2016-2025). To limit leakage, the exposure feature
 # for an event year only uses points designated BEFORE that year.
 EVENT_YEARS = (2017, 2023)
+SIMPLIFY_DEG = 0.0005  # about 50 m, for the web choropleth only
+CURRENT = "all"  # no cutoff: every designated point, for the present-day map
 
 
 def main() -> None:
@@ -103,13 +105,12 @@ def main() -> None:
         return math.hypot((q.x - lon) * KX, (q.y - lat) * KY)
 
     settlements = load_settlements_csv(paths["ccpp"])
-    exposed_pop: dict[int, dict[str, int]] = {year: {} for year in EVENT_YEARS}
+    exposed_pop: dict[int | str, dict[str, int]] = {year: {} for year in (*EVENT_YEARS, CURRENT)}
     for s in settlements:
         near_river = metres_to(rivers, s.lon, s.lat) <= RIVER_BUFFER_M
-        for year in EVENT_YEARS:
+        for year in (*EVENT_YEARS, CURRENT):
             near_cp = any(
-                cp.period is not None
-                and cp.period < year
+                (year == CURRENT or (cp.period is not None and cp.period < year))
                 and math.hypot((cp.lon - s.lon) * KX, (cp.lat - s.lat) * KY) <= CRITICAL_POINT_BUFFER_M
                 for cp in critical
             )
@@ -131,7 +132,7 @@ def main() -> None:
             "mm_high_share": round(summary.high_share, 4) if summary else None,
             "mm_total_area_km2": round(summary.total_area_km2, 2) if summary else None,
             "mean_slope_deg": None if (m := mean_slope(poly)) is None else round(m, 2),
-            "exposed_population": {str(y): exposed_pop[y].get(ubigeo, 0) for y in EVENT_YEARS},
+            "exposed_population": {str(y): exposed_pop[y].get(ubigeo, 0) for y in (*EVENT_YEARS, CURRENT)},
             "tailings_upstream": len(upstream),
             "tailings_upstream_ids": upstream,
             "tailings_upstream_volume_m3": round(sum(sites[s].volume_m3 or 0.0 for s in upstream), 1),
@@ -144,12 +145,25 @@ def main() -> None:
         "definition": {
             "mm_high_share": "area share of INGEMMET susceptibility classes 4-5 (alta, muy alta), by CD_DIST",
             "mean_slope_deg": "mean slope of land cells (>0.5 m) from Copernicus GLO-30",
-            "exposed_population": f"per event year: sum of ANA Pob_rev of settlements within {RIVER_BUFFER_M:.0f} m of "
+            "exposed_population": f"per event year (and 'all' for the present-day map): sum of ANA Pob_rev of settlements within {RIVER_BUFFER_M:.0f} m of "
             f"an IGN river line or {CRITICAL_POINT_BUFFER_M:.0f} m of an ANA critical point designated before that year",
             "tailings_upstream": "INGEMMET tailings sites whose D8 flow path (80 km cap) crosses the district",
         },
         "districts": out,
     }
+    polygons = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": json.loads(shapely.to_geojson(shapely.set_precision(poly.simplify(SIMPLIFY_DEG, preserve_topology=True), 0.00001))),
+                "properties": {"ubigeo": ubigeo, "name": name},
+            }
+            for ubigeo, (name, poly) in sorted(districts.items())
+        ],
+    }
+    poly_target = data.write_derived("district_polygons.geojson", json.dumps(polygons, separators=(",", ":"), ensure_ascii=False))
+    print(f"wrote {poly_target} ({poly_target.stat().st_size / 1024:.0f} KB)")
     target = data.write_derived("district_features.json", json.dumps(payload, indent=1, ensure_ascii=False))
     print(f"wrote {target}")
 

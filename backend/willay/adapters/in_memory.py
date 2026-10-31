@@ -10,13 +10,20 @@ from willay.domain.entities import (
     SenamhiLevel,
     Settlement,
     TailingsSite,
+    WaterIntake,
 )
 
 
 class InMemorySiteRepository:
-    def __init__(self, sites: Sequence[TailingsSite], settlements: Sequence[Settlement]) -> None:
+    def __init__(
+        self,
+        sites: Sequence[TailingsSite],
+        settlements: Sequence[Settlement],
+        intakes: Sequence[WaterIntake] = (),
+    ) -> None:
         self._sites = tuple(sites)
         self._settlements = tuple(settlements)
+        self._intakes = tuple(intakes)
 
     def list_sites(self) -> Sequence[TailingsSite]:
         return self._sites
@@ -26,6 +33,9 @@ class InMemorySiteRepository:
 
     def list_settlements(self) -> Sequence[Settlement]:
         return self._settlements
+
+    def list_water_intakes(self) -> Sequence[WaterIntake]:
+        return self._intakes
 
 
 class InMemoryHazardData:

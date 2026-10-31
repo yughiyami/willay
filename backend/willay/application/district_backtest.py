@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from typing import Mapping, Sequence
 
 from willay.application.run_backtest import BacktestDataset, DistrictRecord, run_backtest
-from willay.domain.backtest_metrics import bootstrap_auc_ci, lead_time_stats
+from willay.domain.backtest_metrics import bootstrap_auc_ci, lead_time_stats, top_k_capture_rate
 from willay.domain.district_score import DistrictFeatures, percentile_ranks, score_districts
 from willay.domain.entities import (
     AlertTier,
@@ -32,6 +32,12 @@ class BacktestEvent:
     label_start: date
     label_end: date
     signal_start: date  # first day for which ENFEN/CHIRPS signals are evaluated
+
+
+STANDARD_EVENTS: Mapping[str, BacktestEvent] = {
+    "2017": BacktestEvent("2017", date(2017, 1, 1), date(2017, 4, 30), signal_start=date(2017, 1, 1)),
+    "2023": BacktestEvent("2023", date(2023, 3, 1), date(2023, 3, 31), signal_start=date(2023, 2, 1)),
+}
 
 
 @dataclass(frozen=True)
@@ -270,3 +276,26 @@ def run_district_backtest(
         "gates": gate_info,
         "districts": table,
     }
+
+
+def recompute_top_k(event_result: Mapping, top_k_pcts: Sequence[int]) -> dict:
+    """Copy of a stored event result with top-k metrics recomputed from its district table."""
+    table = event_result["districts"]
+    n = len(table)
+    labels = [bool(d["emergency"]) for d in table]
+    n_positive = sum(labels)
+    models: dict[str, dict] = {}
+    for name, stored in event_result["models"].items():
+        scores = [float(d["scores"].get(name) or 0.0) for d in table]
+        slots = {str(k): _slots(n, k) for k in top_k_pcts}
+        capture = {str(k): (top_k_capture_rate(scores, labels, k) if n_positive else None) for k in top_k_pcts}
+        models[name] = {
+            **stored,
+            "top_k_capture": capture,
+            "top_k_slots": slots,
+            "max_top_k_capture": {k: (min(1.0, s / n_positive) if n_positive else None) for k, s in slots.items()},
+            "top_k_precision": {
+                k: (v * n_positive / slots[k] if v is not None else None) for k, v in capture.items()
+            },
+        }
+    return {**event_result, "models": models}
