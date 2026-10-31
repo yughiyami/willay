@@ -14,7 +14,7 @@ from typing import Mapping, Sequence
 
 from willay.application.run_backtest import BacktestDataset, DistrictRecord, run_backtest
 from willay.domain.backtest_metrics import lead_time_stats
-from willay.domain.district_score import percentile_ranks
+from willay.domain.district_score import DistrictFeatures, percentile_ranks, score_districts
 from willay.domain.entities import (
     AlertTier,
     DailyRain,
@@ -39,6 +39,40 @@ class DistrictRow:
     ubigeo: str
     name: str
     population: int = 0
+
+
+@dataclass(frozen=True)
+class ScenarioBaseline:
+    """CENEPRED El Nino 2027 district scenario values and census population (comparison only)."""
+
+    ubigeo: str
+    name: str
+    population: int
+    flood_value: float | None
+    mm_value: float | None
+
+
+def build_model_scores(
+    features: Sequence[DistrictFeatures], baselines: Sequence[ScenarioBaseline]
+) -> dict[str, dict[str, float]]:
+    """Scores per model. Our score uses only `features`; the baselines never feed into it."""
+    models: dict[str, dict[str, float]] = {
+        "willay_static": {s.ubigeo: s.value for s in score_districts(features)},
+        "cenepred_baseline": {},
+        "cenepred_mm_only": {},
+        "cenepred_flood_only": {},
+        "population_baseline": {},
+    }
+    for b in baselines:
+        present = [v for v in (b.flood_value, b.mm_value) if v is not None]
+        if present:
+            models["cenepred_baseline"][b.ubigeo] = sum(present) / len(present)
+        if b.mm_value is not None:
+            models["cenepred_mm_only"][b.ubigeo] = b.mm_value
+        if b.flood_value is not None:
+            models["cenepred_flood_only"][b.ubigeo] = b.flood_value
+        models["population_baseline"][b.ubigeo] = float(b.population)
+    return models
 
 
 @dataclass(frozen=True)
