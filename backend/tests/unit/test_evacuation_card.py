@@ -4,6 +4,7 @@ import pytest
 
 from willay.application.evacuation_card import CardRequest, build_card, card_text_lines
 from willay.domain.entities import AlertTier
+from willay.domain.safe_point import SafePoint
 
 
 def request(tier=AlertTier.EVACUATION, **kw) -> CardRequest:
@@ -35,9 +36,21 @@ def test_titles_follow_the_tier():
     assert card_text_lines(request(AlertTier.ATTENTION))["title"].startswith("ATENCIÓN")
 
 
-def test_missing_safe_point_is_stated_not_invented():
+def test_missing_safe_point_asks_the_municipality_and_is_not_invented():
     lines = card_text_lines(request(safe_point=None))
-    assert "Defensa Civil" in lines["safe_point"]
+    assert lines["safe_point"] == "Consulte a su municipalidad el punto seguro"
+    assert "no definido" not in lines["safe_point"].lower()
+
+
+def test_a_proposed_safe_point_is_described_with_its_validation_label():
+    proposed = SafePoint(-76.0, -12.0, 140.0, 1230.0, 47.0, 42.0, 410.0, 8.0)
+    lines = card_text_lines(request(safe_point=None, proposed_safe_point=proposed))
+    assert lines["safe_point"] == "Punto seguro: a 1.2 km al noreste (propuesto — validar con la municipalidad)"
+
+
+def test_a_curated_safe_point_wins_over_a_proposal():
+    proposed = SafePoint(-76.0, -12.0, 140.0, 1230.0, 47.0, 42.0, 410.0, 8.0)
+    assert card_text_lines(request(proposed_safe_point=proposed))["safe_point"] == "Punto seguro: Loma del mirador"
 
 
 @pytest.mark.parametrize("tier", [AlertTier.NONE, AlertTier.PENDING_CONFIRMATION])

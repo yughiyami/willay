@@ -76,3 +76,39 @@ def test_unavailable_without_an_image_generator():
 @pytest.mark.parametrize("error,status", [(MetaApiError("boom", 500), 502), (BudgetExceededError("over budget"), 429)])
 def test_upstream_failures_map_to_clean_errors(error, status):
     assert client_with(FakeImage(error)).post("/cards/evacuation", json=PAYLOAD).status_code == status
+
+
+# --- safe point resolved from a settlement ------------------------------------------
+
+import dataclasses
+
+from willay.adapters.in_memory import InMemorySiteRepository
+from willay.domain.safe_point import SafePoint
+
+PROPOSED = SafePoint(-76.0, -12.0, 140.0, 1230.0, 47.0, 42.0, 410.0, 8.0)
+WITHOUT_SAFE_POINT = {k: v for k, v in PAYLOAD.items() if k != "safe_point"}
+
+
+def client_with_settlements(image, **changes) -> TestClient:
+    deps = synthetic_dependencies()
+    settlements = [dataclasses.replace(s, **changes) for s in deps.repository.list_settlements()]
+    deps.repository = InMemorySiteRepository(deps.repository.list_sites(), settlements)
+    deps.image_generator = image
+    return TestClient(create_app(deps))
+
+
+def test_a_settlement_id_supplies_the_proposed_safe_point_with_its_label():
+    client = client_with_settlements(FakeImage(), safe_point=None, proposed_safe_point=PROPOSED)
+    body = client.post("/cards/evacuation", json={**WITHOUT_SAFE_POINT, "settlement_id": "set-001"}).json()
+    assert body["intended_text"]["safe_point"] == "Punto seguro: a 1.2 km al noreste (propuesto — validar con la municipalidad)"
+
+
+def test_a_settlement_without_any_safe_point_gets_the_municipality_line():
+    client = client_with_settlements(FakeImage(), safe_point=None)
+    body = client.post("/cards/evacuation", json={**WITHOUT_SAFE_POINT, "settlement_id": "set-001"}).json()
+    assert body["intended_text"]["safe_point"] == "Consulte a su municipalidad el punto seguro"
+
+
+def test_an_unknown_settlement_id_is_rejected():
+    response = client_with(FakeImage()).post("/cards/evacuation", json={**WITHOUT_SAFE_POINT, "settlement_id": "nope"})
+    assert response.status_code == 404
