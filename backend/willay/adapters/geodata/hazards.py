@@ -14,6 +14,9 @@ from typing import Iterable, Mapping, Sequence
 from willay.adapters.geodata.text import clean, pad_ubigeo, to_float
 
 HIGH_SUSCEPTIBILITY_MIN_CLASS = 4  # GRIDCODE 4 = Alta, 5 = Muy alta
+# Square degrees -> km2 at the study latitude (about -11.9). Only used to give areas a unit;
+# shares are scale-free, and the error across the 0.7 degree bbox is below 0.1%.
+KM2_PER_DEG2 = 111.32 * 0.97851 * 110.574
 
 
 # --- INGEMMET susceptibility to mass movements ---------------------------------
@@ -80,6 +83,14 @@ class DistrictSusceptibility:
         return self.high_area_km2 / self.total_area_km2 if self.total_area_km2 > 0 else 0.0
 
 
+def _polygon_area_km2(props: Mapping) -> float:
+    """AREA_KM2 is rounded to integers in the INGEMMET layer (0 for most polygons): use SHAPE.AREA."""
+    shape_area = to_float(props.get("SHAPE.AREA"))
+    if shape_area is not None:
+        return shape_area * KM2_PER_DEG2
+    return to_float(props.get("AREA_KM2")) or 0.0
+
+
 def summarize_susceptibility_by_district(features: Iterable[Mapping]) -> dict[str, DistrictSusceptibility]:
     """Area of high and very-high susceptibility per district (attribute aggregation, no geometry)."""
     totals: dict[str, list[float]] = {}
@@ -87,7 +98,7 @@ def summarize_susceptibility_by_district(features: Iterable[Mapping]) -> dict[st
         props = feature.get("properties", {})
         ubigeo = pad_ubigeo(props.get("CD_DIST"))
         grid = props.get("GRIDCODE")
-        area = to_float(props.get("AREA_KM2")) or 0.0
+        area = _polygon_area_km2(props)
         if not ubigeo or not isinstance(grid, (int, float)) or grid < 1:
             continue
         acc = totals.setdefault(ubigeo, [0.0, 0.0])
