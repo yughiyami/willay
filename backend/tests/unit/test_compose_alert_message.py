@@ -3,6 +3,7 @@ import pytest
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
 from willay.ports.templates import ReviewedTemplates, TemplateNotAvailable
 from willay.domain.entities import AlertTier
+from willay.domain.safe_point import SafePoint
 
 
 def make_input(tier=AlertTier.EVACUATION, **overrides) -> AlertMessageInput:
@@ -103,7 +104,8 @@ def test_message_never_changes_the_tier():
 
 def test_missing_safe_point_is_stated_explicitly():
     message = compose_alert_message(language="en", data=make_input(safe_point=None))
-    assert "not defined" in message.text.lower()
+    assert "municipality" in message.text.lower()
+    assert "not defined" not in message.text.lower()
 
 
 # --- language support ---------------------------------------------------------------
@@ -140,7 +142,7 @@ def test_household_messages_default_to_spanish():
 @pytest.mark.parametrize("tier", [AlertTier.PREPARATION, AlertTier.ATTENTION, AlertTier.EVACUATION])
 def test_spanish_template_contains_all_required_fields(tier):
     message = compose_alert_message(make_input(tier), language="es")
-    for needle in (tier.value, "SYNTHETIC Tailings Alpha", "7.5 km", "Plaza Mayor", "SENAMHI Aviso 123/2026"):
+    for needle in ("SYNTHETIC Tailings Alpha", "7.5 km", "Plaza Mayor", "SENAMHI Aviso 123/2026", "SENAMHI", "INDECI", "ENFEN"):
         assert needle in message.text
 
 
@@ -150,9 +152,10 @@ def test_spanish_evacuation_message_is_imperative_and_formal():
     assert " vos " not in text.lower()
 
 
-def test_spanish_missing_safe_point_is_stated_explicitly():
+def test_spanish_missing_safe_point_asks_the_municipality_and_never_says_undefined():
     text = compose_alert_message(make_input(safe_point=None), language="es").text
-    assert "no definido" in text.lower()
+    assert "Consulte a su municipalidad el punto seguro" in text
+    assert "no definido" not in text.lower()
 
 
 def test_operator_message_defaults_to_english_but_can_be_spanish():
@@ -213,3 +216,80 @@ def test_reviewed_template_text_with_unknown_placeholders_is_rejected():
 def test_message_reports_its_language():
     assert compose_alert_message(make_input()).language == "es"
     assert compose_alert_message(make_input(), language="en").language == "en"
+
+
+# --- proposed safe points -----------------------------------------------------------
+
+PROPOSED = SafePoint(
+    lon=-76.0,
+    lat=-12.0,
+    elevation_m=140.0,
+    distance_m=1230.0,
+    bearing_deg=47.0,
+    height_above_flow_m=42.0,
+    distance_to_flow_m=410.0,
+    slope_deg=8.0,
+)
+PROPOSED_LABEL = "propuesto — validar con la municipalidad"
+
+
+def test_a_proposed_safe_point_is_described_and_always_labelled_as_a_proposal():
+    text = compose_alert_message(make_input(safe_point=None, proposed_safe_point=PROPOSED), language="es").text
+    assert "1.2 km al noreste" in text
+    assert PROPOSED_LABEL in text
+    assert "Consulte a su municipalidad" not in text
+
+
+def test_a_curated_safe_point_wins_over_a_proposal_and_is_not_labelled_as_proposed():
+    text = compose_alert_message(make_input(proposed_safe_point=PROPOSED), language="es").text
+    assert "Plaza Mayor" in text and PROPOSED_LABEL not in text
+
+
+def test_a_proposed_safe_point_in_english_is_labelled_too():
+    text = compose_alert_message(make_input(safe_point=None, proposed_safe_point=PROPOSED), language="en").text
+    assert "1.2 km to the northeast" in text
+    assert "proposed" in text.lower() and "validate" in text.lower()
+
+
+def test_reviewed_templates_receive_the_proposed_safe_point_text_with_its_label():
+    templates = FakeTemplates({"EVACUATION": "X {safe_point}"})
+    text = compose_alert_message(
+        make_input(safe_point=None, proposed_safe_point=PROPOSED), language="qu", templates=templates
+    ).text
+    assert PROPOSED_LABEL in text
+
+
+def test_llm_rephrase_must_keep_the_proposed_safe_point_text():
+    class DropsSafePoint:
+        def rephrase(self, text, language="en"):
+            return "Evacúe. SYNTHETIC Tailings Alpha 7.5 SENAMHI Aviso 123/2026 SENAMHI INDECI ENFEN"
+
+        def explain(self, facts, language="en"):
+            return facts
+
+    message = compose_alert_message(
+        make_input(safe_point=None, proposed_safe_point=PROPOSED), llm=DropsSafePoint(), language="es"
+    )
+    assert message.rephrased is False
+
+
+# --- low-literacy Spanish household messages ----------------------------------------
+
+
+@pytest.mark.parametrize("tier", [AlertTier.PREPARATION, AlertTier.ATTENTION, AlertTier.EVACUATION])
+def test_spanish_household_message_is_short_and_has_four_plain_lines(tier):
+    text = compose_alert_message(make_input(tier), language="es").text
+    situation, action, safe_point, source = text.split("\n")
+    assert len(text) <= 330
+    assert situation.count(".") == 1 and "SYNTHETIC Tailings Alpha" in situation and "7.5 km" in situation
+    assert sum(action.count(mark) for mark in ".!?") <= 1  # one short action sentence
+    assert safe_point.startswith("Punto seguro:") and "Plaza Mayor" in safe_point
+    assert source.startswith("Fuente:") and "SENAMHI Aviso 123/2026" in source
+    assert "no las reemplaza" in source
+
+
+@pytest.mark.parametrize("tier", [AlertTier.PREPARATION, AlertTier.ATTENTION, AlertTier.EVACUATION])
+def test_spanish_household_message_keeps_every_required_fact(tier):
+    text = compose_alert_message(make_input(tier, safe_point=None, proposed_safe_point=PROPOSED), language="es").text
+    for fact in ("SYNTHETIC Tailings Alpha", "7.5 km", "1.2 km al noreste", PROPOSED_LABEL, "SENAMHI Aviso 123/2026"):
+        assert fact in text
