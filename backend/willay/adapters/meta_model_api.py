@@ -262,17 +262,18 @@ class MetaModelApiAdapter:
         schema: Mapping[str, object],
         purpose: str = "extract",
         model: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> dict:
-        payload = self._responses(
-            {
-                "model": model or self._text_model,
-                "instructions": instructions,
-                "input": [{"role": "user", "content": list(content)}],
-                "text": {"format": {"type": "json_schema", "name": schema_name, "schema": dict(schema), "strict": False}},
-                "reasoning": {"effort": DEFAULT_REASONING_EFFORT},
-            },
-            purpose,
-        )
+        body: dict = {
+            "model": model or self._text_model,
+            "instructions": instructions,
+            "input": [{"role": "user", "content": list(content)}],
+            "text": {"format": {"type": "json_schema", "name": schema_name, "schema": dict(schema), "strict": False}},
+            "reasoning": {"effort": DEFAULT_REASONING_EFFORT},
+        }
+        if max_output_tokens:
+            body["max_output_tokens"] = max_output_tokens
+        payload = self._responses(body, purpose)
         text = _response_text(payload)
         try:
             result = json.loads(text)

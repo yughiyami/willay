@@ -44,4 +44,5 @@ class StructuredExtractionPort(Protocol):
         schema: Mapping[str, object],
         purpose: str = "",
         model: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> dict: ...
