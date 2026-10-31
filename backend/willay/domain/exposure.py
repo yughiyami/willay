@@ -21,6 +21,8 @@ class ExposureConfig:
     # Impact of a reached drinking-water intake (before distance decay). Intake coordinates from
     # open sources are approximate, so this is deliberately below 1.
     intake_impact: float = 0.5
+    # OSM locations are plant/compound centres, not the actual intake structure: snap more loosely.
+    intake_snap_tolerance_m: float = 1_000.0
 
     def __post_init__(self) -> None:
         if self.snap_tolerance_m < 0:
@@ -31,6 +33,8 @@ class ExposureConfig:
             raise ValueError("cutoff_m must be > 0")
         if self.reference_population <= 0:
             raise ValueError("reference_population must be > 0")
+        if self.intake_snap_tolerance_m < 0:
+            raise ValueError("intake_snap_tolerance_m must be >= 0")
         if not 0.0 <= self.intake_impact <= 1.0:
             raise ValueError("intake_impact must be within [0, 1]")
 
@@ -159,7 +163,7 @@ def downstream_exposure(
     reached: list[IntakeExposure] = []
     for intake in intakes:
         along, snap = _snap_to_path(path, intake)
-        if snap > cfg.snap_tolerance_m or along > cfg.cutoff_m:
+        if snap > cfg.intake_snap_tolerance_m or along > cfg.cutoff_m:
             continue
         reached.append(
             IntakeExposure(

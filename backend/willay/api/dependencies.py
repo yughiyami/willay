@@ -191,6 +191,8 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         disclaimer=REAL_DISCLAIMER,
         data_mode="real",
         basin_only=True,
+        # Flow paths are capped at 80 km, so exposure is evaluated over the whole path.
+        exposure_config=ExposureConfig(cutoff_m=80_000.0),
         flow_path_features=world.flow_path_geojson,
         site_static_inputs={
             site_id: {
