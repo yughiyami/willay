@@ -201,3 +201,18 @@ def compute_risk_score(
     for factor in factors.values():
         product *= factor.value
     return RiskScore(value=product, factors=factors)
+
+
+def compute_static_risk(
+    *,
+    susceptibility: float | None,
+    vulnerability: float | None,
+    exposure: float | None,
+    config: RiskConfig | None = None,
+) -> float:
+    """Site static risk: the score without the time-varying Trigger factor."""
+    cfg = config or RiskConfig()
+    product = 1.0
+    for raw in (susceptibility, vulnerability, exposure):
+        product *= _breakdown(raw, cfg.epsilon).value
+    return product
