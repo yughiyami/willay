@@ -50,6 +50,8 @@ class SettlementExposure:
     population: int
     households: int
     has_water_intake: bool
+    lon: float = 0.0
+    lat: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -63,6 +65,8 @@ class SettlementExposure:
             "population": self.population,
             "households": self.households,
             "has_water_intake": self.has_water_intake,
+            "lon": self.lon,
+            "lat": self.lat,
         }
 
 
@@ -157,6 +161,8 @@ def downstream_exposure(
                 population=s.population,
                 households=s.households,
                 has_water_intake=s.has_water_intake,
+                lon=s.lon,
+                lat=s.lat,
             )
         )
     contributions.sort(key=lambda c: c.along_path_m)
