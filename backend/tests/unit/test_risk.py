@@ -190,3 +190,20 @@ def test_config_validates_epsilon_and_volume_range():
         RiskConfig(epsilon=1.0)
     with pytest.raises(ValueError):
         RiskConfig(volume_min_m3=10, volume_max_m3=10)
+
+
+# --- static risk (used by the PREPARATION tier) ------------------------------
+
+
+def test_static_risk_is_product_without_trigger():
+    from willay.domain.risk import compute_static_risk
+
+    value = compute_static_risk(susceptibility=0.5, vulnerability=0.5, exposure=0.8, config=RiskConfig(epsilon=0.01))
+    assert value == pytest.approx(0.5 * 0.5 * 0.8)
+
+
+def test_static_risk_floors_missing_exposure_with_epsilon():
+    from willay.domain.risk import compute_static_risk
+
+    value = compute_static_risk(susceptibility=0.5, vulnerability=0.5, exposure=None, config=RiskConfig(epsilon=0.1))
+    assert value == pytest.approx(0.5 * 0.5 * 0.1)
