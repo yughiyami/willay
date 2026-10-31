@@ -1,0 +1,164 @@
+:root {
+  --panel-bg: #14181f;
+  --panel-fg: #e8ecf1;
+  --muted: #9aa5b4;
+  --accent: #4aa3ff;
+  --warn-bg: #4a3a12;
+  --warn-fg: #ffd877;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  height: 100vh;
+}
+
+#globe {
+  min-width: 0;
+  height: 100%;
+}
+
+#panel {
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 16px 0 4px;
+}
+
+h3 {
+  font-size: 13px;
+  margin: 14px 0 6px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tagline,
+.muted {
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+.banner {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.honesty {
+  margin-top: 24px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+#site-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.site-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  border: 1px solid #2a313c;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.site-row:hover,
+.site-row:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.site-name {
+  flex: 1;
+}
+
+.site-score {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.score {
+  border-left: 4px solid var(--accent);
+  padding-left: 8px;
+  font-weight: 600;
+}
+
+.factor {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.factor-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.bar-track {
+  background: #262d38;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  background: var(--accent);
+  height: 100%;
+}
+
+.factor-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reasons {
+  padding-left: 18px;
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+@media (max-width: 800px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 55vh 1fr;
+  }
+}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Willay Relaves</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="globe"></div>
+      <aside id="panel" aria-live="polite">
+        <h1>Willay Relaves</h1>
+        <p class="tagline">El Nino early warning for tailings sites</p>
+        <p id="banner" class="banner" hidden></p>
+        <p id="status" class="muted">Loading sites...</p>
+        <ul id="site-list"></ul>
+        <section id="detail" hidden></section>
+        <p class="honesty">
+          Complements, never replaces, official SENAMHI / INDECI / ENFEN alerts. Alert tiers are
+          deterministic; language models only explain.
+        </p>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
