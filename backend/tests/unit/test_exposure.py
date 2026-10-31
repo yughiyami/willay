@@ -190,3 +190,18 @@ def test_intakes_are_sorted_along_the_path_and_serialisable():
     data = result.intakes[0].to_dict()
     assert data["distance_km"] == pytest.approx(3.0, rel=0.02)
     assert data["approximate"] is True
+
+
+def test_intakes_use_their_own_wider_snap_tolerance_because_osm_centres_are_approximate():
+    path = meridian_path()
+    near = intake_at(5_000, offset_deg_lon=0.008)  # about 870 m sideways: beyond 500 m, within 1 km
+    far = intake_at(5_000, offset_deg_lon=0.013)  # about 1.4 km sideways
+    result = downstream_exposure(path, [], CFG, intakes=[near, far])
+    assert [i.intake_id for i in result.intakes] == [near.id]
+    # settlements keep the tight tolerance
+    assert downstream_exposure(path, [settlement_at(5_000, offset_deg_lon=0.008)], CFG).contributions == ()
+
+
+def test_intake_snap_tolerance_is_validated():
+    with pytest.raises(ValueError):
+        ExposureConfig(intake_snap_tolerance_m=-1)
