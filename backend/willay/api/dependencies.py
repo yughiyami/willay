@@ -6,6 +6,7 @@ WILLAY_DATA_MODE=synthetic uses the invented fixtures bundled in backend/fixture
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -24,6 +25,8 @@ from willay.adapters.geodata.emergencies import (
 from willay.adapters.geodata.loader import load_real_world
 from willay.adapters.geodata.timeseries import load_enfen_csv
 from willay.adapters.in_memory import InMemorySiteRepository
+from willay.adapters.safe_points_file import FILE_NAME as SAFE_POINTS_FILE
+from willay.adapters.safe_points_file import load_proposed_safe_points
 from willay.adapters.reviewed_templates import FileReviewedTemplates
 from willay.application.district_backtest import STANDARD_EVENTS
 from willay.application.run_backtest import BacktestDataset
@@ -231,8 +234,12 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
     results_path = data.derived("backtest_results.json")
     backtest_results = json.loads(results_path.read_text(encoding="utf-8")) if results_path.exists() else None
 
+    proposed = load_proposed_safe_points(data.derived(SAFE_POINTS_FILE))
+    settlements = tuple(
+        dataclasses.replace(s, proposed_safe_point=proposed[s.id]) if s.id in proposed else s for s in world.settlements
+    )
     return AppDependencies(
-        repository=InMemorySiteRepository(world.sites, world.settlements, world.intakes),
+        repository=InMemorySiteRepository(world.sites, settlements, world.intakes),
         hazard_scenario=hazard,
         official_source=source,
         backtest_dataset=None,
