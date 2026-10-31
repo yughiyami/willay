@@ -35,6 +35,9 @@ LAT0 = -11.9
 KX, KY = 111_320.0 * math.cos(math.radians(LAT0)), 110_574.0
 RIVER_BUFFER_M = 500.0
 CRITICAL_POINT_BUFFER_M = 1_000.0
+# ANA critical points are designated year by year (2016-2025). To limit leakage, the exposure feature
+# for an event year only uses points designated BEFORE that year.
+EVENT_YEARS = (2017, 2023)
 
 
 def main() -> None:
@@ -100,14 +103,18 @@ def main() -> None:
         return math.hypot((q.x - lon) * KX, (q.y - lat) * KY)
 
     settlements = load_settlements_csv(paths["ccpp"])
-    exposed_pop: dict[str, int] = {}
+    exposed_pop: dict[int, dict[str, int]] = {year: {} for year in EVENT_YEARS}
     for s in settlements:
         near_river = metres_to(rivers, s.lon, s.lat) <= RIVER_BUFFER_M
-        near_cp = any(
-            math.hypot((cp.lon - s.lon) * KX, (cp.lat - s.lat) * KY) <= CRITICAL_POINT_BUFFER_M for cp in critical
-        )
-        if near_river or near_cp:
-            exposed_pop[s.ubigeo] = exposed_pop.get(s.ubigeo, 0) + s.population
+        for year in EVENT_YEARS:
+            near_cp = any(
+                cp.period is not None
+                and cp.period < year
+                and math.hypot((cp.lon - s.lon) * KX, (cp.lat - s.lat) * KY) <= CRITICAL_POINT_BUFFER_M
+                for cp in critical
+            )
+            if near_river or near_cp:
+                exposed_pop[year][s.ubigeo] = exposed_pop[year].get(s.ubigeo, 0) + s.population
 
     # 4. tailings upstream: sites whose flow path crosses the district
     sites = {s.id: s for s in load_tailings_csv(paths["tailings"])}
@@ -124,21 +131,21 @@ def main() -> None:
             "mm_high_share": round(summary.high_share, 4) if summary else None,
             "mm_total_area_km2": round(summary.total_area_km2, 2) if summary else None,
             "mean_slope_deg": None if (m := mean_slope(poly)) is None else round(m, 2),
-            "exposed_population": exposed_pop.get(ubigeo, 0),
+            "exposed_population": {str(y): exposed_pop[y].get(ubigeo, 0) for y in EVENT_YEARS},
             "tailings_upstream": len(upstream),
             "tailings_upstream_ids": upstream,
             "tailings_upstream_volume_m3": round(sum(sites[s].volume_m3 or 0.0 for s in upstream), 1),
         }
         o = out[ubigeo]
         print(f"{ubigeo} {name[:26]:26s} high={o['mm_high_share']} slope={o['mean_slope_deg']} "
-              f"exp_pop={o['exposed_population']:8d} tailings={o['tailings_upstream']}")
+              f"exp_pop={o['exposed_population']['2017']:8d}/{o['exposed_population']['2023']:8d} tailings={o['tailings_upstream']}")
 
     payload = {
         "definition": {
             "mm_high_share": "area share of INGEMMET susceptibility classes 4-5 (alta, muy alta), by CD_DIST",
             "mean_slope_deg": "mean slope of land cells (>0.5 m) from Copernicus GLO-30",
-            "exposed_population": f"sum of ANA Pob_rev of settlements within {RIVER_BUFFER_M:.0f} m of an IGN river "
-            f"line or {CRITICAL_POINT_BUFFER_M:.0f} m of an ANA critical point",
+            "exposed_population": f"per event year: sum of ANA Pob_rev of settlements within {RIVER_BUFFER_M:.0f} m of "
+            f"an IGN river line or {CRITICAL_POINT_BUFFER_M:.0f} m of an ANA critical point designated before that year",
             "tailings_upstream": "INGEMMET tailings sites whose D8 flow path (80 km cap) crosses the district",
         },
         "districts": out,
