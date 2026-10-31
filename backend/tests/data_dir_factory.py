@@ -166,6 +166,51 @@ DISTRICT_FEATURES = {
 }
 
 
+def _square(lon0, lat0, lon1, lat1):
+    return {"type": "Polygon", "coordinates": [[[lon0, lat0], [lon1, lat0], [lon1, lat1], [lon0, lat1], [lon0, lat0]]]}
+
+
+DISTRICT_POLYGONS = {
+    "type": "FeatureCollection",
+    "features": [
+        {"type": "Feature", "geometry": _square(-76.6, -11.9, -76.4, -11.7), "properties": {"ubigeo": "150722", "name": "SAN MATEO"}},
+        {"type": "Feature", "geometry": _square(-76.6, -12.1, -76.4, -11.9), "properties": {"ubigeo": "150705", "name": "CHICLA"}},
+        {"type": "Feature", "geometry": _square(-76.1, -11.1, -75.9, -10.9), "properties": {"ubigeo": "150401", "name": "CANTA"}},
+    ],
+}
+
+_METRICS = {"auc": 0.8, "auc_ci95": [0.5, 1.0], "top_k_capture": {"10": 0.5, "20": 0.5}, "max_top_k_capture": {"10": 0.5, "20": 1.0},
+            "top_k_precision": {"10": 1.0, "20": 1.0}, "top_k_slots": {"10": 1, "20": 1}, "n_districts": 3}
+
+
+def _event(key):
+    return {
+        "event": key,
+        "n_districts": 3,
+        "n_positive": 1,
+        "base_rate": 1 / 3,
+        "primary_gate": "weak_rain80",
+        "models": {
+            "willay_static": dict(_METRICS),
+            "cenepred_baseline": dict(_METRICS),
+            "population_baseline": dict(_METRICS),
+        },
+        "lead_time": {"weak_rain80": {"willay_static": {"values": [10], "n": 1, "median": 10.0, "p25": 10.0, "p75": 10.0, "n_without_lead": 0}}},
+        "gates": {"weak_rain80": {"primary": True, "first_eligible_day": "2017-02-13"}},
+        "districts": [
+            {"ubigeo": "150722", "name": "SAN MATEO", "population": 5000, "emergency": True, "first_emergency": "2017-03-15",
+             "scores": {"willay_static": 0.9, "cenepred_baseline": 3.2, "population_baseline": 5000.0}},
+            {"ubigeo": "150705", "name": "CHICLA", "population": 8000, "emergency": False, "first_emergency": None,
+             "scores": {"willay_static": 0.5, "cenepred_baseline": 2.0, "population_baseline": 8000.0}},
+            {"ubigeo": "150401", "name": "CANTA", "population": 3000, "emergency": False, "first_emergency": None,
+             "scores": {"willay_static": 0.1, "cenepred_baseline": 1.0, "population_baseline": 3000.0}},
+        ],
+    }
+
+
+BACKTEST_RESULTS = {"generated_on": "2026-10-31", "primary_gate": "weak_rain80", "events": {"2017": _event("2017"), "2023": _event("2023")}}
+
+
 def build_data_dir(root: Path, *, with_derived: bool = True) -> Path:
     processed = root / "processed"
     processed.mkdir(parents=True, exist_ok=True)
@@ -192,4 +237,6 @@ def build_data_dir(root: Path, *, with_derived: bool = True) -> Path:
         (derived / "flowpaths.geojson").write_text(json.dumps(FLOWPATHS), encoding="utf-8")
         (derived / "site_features.json").write_text(json.dumps(SITE_FEATURES), encoding="utf-8")
         (derived / "district_features.json").write_text(json.dumps(DISTRICT_FEATURES), encoding="utf-8")
+        (derived / "district_polygons.geojson").write_text(json.dumps(DISTRICT_POLYGONS), encoding="utf-8")
+        (derived / "backtest_results.json").write_text(json.dumps(BACKTEST_RESULTS), encoding="utf-8")
     return root
