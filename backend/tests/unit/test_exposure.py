@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from willay.domain.entities import FlowPath, PathPoint, Settlement
+from willay.domain.entities import FlowPath, PathPoint, Settlement, WaterIntake
 from willay.domain.exposure import ExposureConfig, downstream_exposure
 from willay.domain.geo import haversine_m
 
@@ -136,3 +136,57 @@ def test_config_validation():
         ExposureConfig(snap_tolerance_m=-1)
     with pytest.raises(ValueError):
         ExposureConfig(cutoff_m=0)
+
+
+# --- water intakes ----------------------------------------------------------
+
+
+def intake_at(along_m: float, offset_deg_lon=0.0, **kwargs) -> WaterIntake:
+    lat = -11.8 - along_m / 111_195.0
+    base = dict(id=f"i{int(along_m)}", name="Fake intake", lon=LON + offset_deg_lon, lat=lat)
+    base.update(kwargs)
+    return WaterIntake(**base)
+
+
+def test_intake_on_path_is_reported_with_distance_and_raises_exposure():
+    path = meridian_path()
+    without = downstream_exposure(path, [], CFG)
+    with_intake = downstream_exposure(path, [], CFG, intakes=[intake_at(8_000)])
+    (reached,) = with_intake.intakes
+    assert reached.intake_id == "i8000"
+    assert reached.along_path_m == pytest.approx(8_000, rel=0.01)
+    assert reached.approximate is True
+    assert with_intake.value > without.value == 0.0
+    assert with_intake.contributions == ()
+
+
+def test_intake_off_the_path_or_beyond_cutoff_is_ignored():
+    path = meridian_path(end_lat=-12.6)
+    far_beside = intake_at(5_000, offset_deg_lon=0.05)  # about 5.4 km sideways
+    too_far = intake_at(60_000)
+    result = downstream_exposure(path, [], CFG, intakes=[far_beside, too_far])
+    assert result.intakes == ()
+    assert result.value == 0.0
+
+
+def test_intake_impact_decays_with_distance():
+    path = meridian_path()
+    near = downstream_exposure(path, [], CFG, intakes=[intake_at(2_000)])
+    far = downstream_exposure(path, [], CFG, intakes=[intake_at(20_000)])
+    assert near.value > far.value
+
+
+def test_intake_exposure_keeps_the_noisy_or_bound():
+    path = meridian_path()
+    big = settlement_at(1_000, population=5_000_000, households=1_000_000)
+    result = downstream_exposure(path, [big], CFG, intakes=[intake_at(1_500), intake_at(2_000)])
+    assert 0.0 < result.value <= 1.0
+
+
+def test_intakes_are_sorted_along_the_path_and_serialisable():
+    path = meridian_path()
+    result = downstream_exposure(path, [], CFG, intakes=[intake_at(9_000), intake_at(3_000)])
+    assert [i.intake_id for i in result.intakes] == ["i3000", "i9000"]
+    data = result.intakes[0].to_dict()
+    assert data["distance_km"] == pytest.approx(3.0, rel=0.02)
+    assert data["approximate"] is True
