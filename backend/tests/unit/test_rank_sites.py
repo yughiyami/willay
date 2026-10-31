@@ -11,6 +11,7 @@ from willay.domain.entities import (
     Settlement,
     SiteStatus,
     TailingsSite,
+    WaterIntake,
 )
 from willay.domain.exposure import ExposureConfig
 from willay.domain.geo import haversine_m
@@ -121,3 +122,39 @@ def test_ranked_site_to_dict_is_json_friendly():
     assert data["synthetic"] is True
     assert "factors" in data["risk"]
     assert data["exposure"]["settlements"][0]["settlement_id"] == "a"
+
+
+# --- real-data additions: intakes, data quality, basin filter ---------------
+
+
+def test_reached_intakes_raise_exposure_and_are_listed():
+    s = site("x", -76.5)
+    intake = WaterIntake(id="i1", name="Bocatoma X", lon=-76.5, lat=-11.85)
+    with_intake = rank_sites(Repo([s], []), HOT, intakes=[intake])[0]
+    without = rank_sites(Repo([s], []), HOT)[0]
+    assert with_intake.exposure.value > without.exposure.value
+    assert [i.intake_id for i in with_intake.exposure.intakes] == ["i1"]
+    data = with_intake.to_dict()
+    assert data["water_intakes"][0]["approximate"] is True
+    assert data["water_intakes"][0]["distance_km"] > 0
+
+
+def test_to_dict_reports_data_quality_flags_and_settlement_distance():
+    s = site("x", -76.5, data_quality=("risk_level_unknown",), in_basin=False, area_m2=1234.0)
+    (r,) = rank_sites(Repo([s], [Settlement("a", "A", -76.5, -11.9, 3000, 700)]), HOT)
+    data = r.to_dict()
+    assert data["data_quality"] == ["risk_level_unknown"]
+    assert data["in_basin"] is False
+    assert data["area_m2"] == 1234.0
+    reached = data["exposure"]["settlements"][0]
+    assert reached["settlement_name"] == "A"
+    assert reached["population"] == 3000
+    assert reached["distance_km"] == pytest.approx(reached["along_path_km"])
+
+
+def test_basin_only_filter_drops_sites_outside_the_basin():
+    inside = site("in", -76.5)
+    outside = site("out", -76.6, in_basin=False)
+    ranked = rank_sites(Repo([inside, outside], []), HOT, basin_only=True)
+    assert [r.site.id for r in ranked] == ["in"]
+    assert len(rank_sites(Repo([inside, outside], []), HOT)) == 2
