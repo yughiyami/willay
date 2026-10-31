@@ -136,6 +136,7 @@ def main() -> None:
             cap = m["top_k_capture"]
             print(
                 f"{name:22s} AUC={m['auc'] if m['auc'] is None else round(m['auc'], 3)} "
+                f"CI95={[round(x, 2) for x in m['auc_ci95']] if m['auc_ci95'] else None} "
                 f"top10%={cap['10'] if cap['10'] is None else round(cap['10'], 3)} "
                 f"top20%={cap['20'] if cap['20'] is None else round(cap['20'], 3)} "
                 f"(max20%={round(m['max_top_k_capture']['20'], 3)})"

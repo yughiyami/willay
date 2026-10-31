@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from typing import Mapping, Sequence
 
 from willay.application.run_backtest import BacktestDataset, DistrictRecord, run_backtest
-from willay.domain.backtest_metrics import lead_time_stats
+from willay.domain.backtest_metrics import bootstrap_auc_ci, lead_time_stats
 from willay.domain.district_score import DistrictFeatures, percentile_ranks, score_districts
 from willay.domain.entities import (
     AlertTier,
@@ -214,6 +214,11 @@ def run_district_backtest(
         )
         report = run_backtest(dataset, top_k_pcts=top_k_pcts)
         entry = report.to_dict()
+        entry["auc_ci95"] = (
+            list(bootstrap_auc_ci([float(raw.get(u, 0.0)) for u in ubigeos], [emergency_flag[u] for u in ubigeos]))
+            if report.auc is not None
+            else None
+        )
         slots = {str(k): _slots(n, k) for k in top_k_pcts}
         entry["top_k_slots"] = slots
         entry["max_top_k_capture"] = {

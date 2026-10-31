@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from datetime import date
 from typing import Mapping, Sequence
@@ -32,6 +33,35 @@ def roc_auc(scores: Sequence[float], labels: Sequence[int | bool]) -> float:
     rank_sum_pos = sum(r for r, y in zip(ranks, labels) if y)
     u = rank_sum_pos - pos * (pos + 1) / 2.0
     return u / (pos * neg)
+
+
+def bootstrap_auc_ci(
+    scores: Sequence[float],
+    labels: Sequence[int | bool],
+    n_resamples: int = 1000,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> tuple[float, float]:
+    """Percentile bootstrap interval of the AUC (districts resampled with replacement).
+
+    With a few dozen districts the interval is wide; it is reported so differences between
+    models are not over-read. Resamples with a single class are skipped.
+    """
+    if len(scores) != len(labels):
+        raise ValueError("scores and labels must have the same length")
+    if not any(labels) or all(labels):
+        raise ValueError("ROC AUC needs at least one positive and one negative label")
+    rng = random.Random(seed)
+    n = len(scores)
+    values: list[float] = []
+    for _ in range(n_resamples):
+        idx = [rng.randrange(n) for _ in range(n)]
+        sample_labels = [labels[i] for i in idx]
+        if not any(sample_labels) or all(sample_labels):
+            continue
+        values.append(roc_auc([scores[i] for i in idx], sample_labels))
+    values.sort()
+    return percentile(values, 100 * alpha / 2), percentile(values, 100 * (1 - alpha / 2))
 
 
 def top_k_capture_rate(scores: Sequence[float], labels: Sequence[int | bool], k_pct: float) -> float:

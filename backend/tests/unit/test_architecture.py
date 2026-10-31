@@ -35,7 +35,7 @@ def test_inner_layers_do_not_import_outer_layers():
 
 
 def test_domain_uses_only_standard_library_and_itself():
-    allowed_roots = {"willay", "__future__", "math", "dataclasses", "datetime", "enum", "typing"}
+    allowed_roots = {"willay", "__future__", "math", "dataclasses", "datetime", "enum", "typing", "random"}
     offenders = []
     for file in (PACKAGE / "domain").rglob("*.py"):
         for module in imported_modules(file):

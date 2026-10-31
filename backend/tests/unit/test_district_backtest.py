@@ -136,6 +136,7 @@ def test_backtest_reports_each_model_with_auc_top_k_and_counts():
     assert result["base_rate"] == pytest.approx(0.4)
     willay = result["models"]["willay_static"]
     assert willay["auc"] == 1.0
+    assert willay["auc_ci95"] == [1.0, 1.0]
     assert willay["top_k_capture"]["20"] == pytest.approx(0.5)  # 1 slot of 2 emergencies
     assert willay["top_k_capture"]["40"] == 1.0
     assert willay["max_top_k_capture"]["20"] == pytest.approx(0.5)
