@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from willay.domain.entities import AlertTier
+
 
 class ResponseKind(Enum):
     """What a household answered (or did not) after an alert."""
@@ -42,3 +44,38 @@ class Household:
     def __post_init__(self) -> None:
         if not self.id or not self.settlement_id:
             raise ValueError("a household needs an id and a settlement_id")
+
+
+@dataclass
+class HouseholdAlert:
+    """One alert delivered to one household: the message, the call and the answer, updated in place."""
+
+    id: str
+    dispatch_id: str
+    site_id: str
+    tier: AlertTier
+    household: Household
+    settlement_name: str
+    lon: float
+    lat: float
+    message_text: str = ""
+    message_language: str = "es"
+    message_status: str = "pending"  # sent | failed
+    call_status: str = "not_attempted"  # not_attempted | completed | blocked | error
+    call_detail: str = ""
+    response: ResponseKind | None = None
+    response_channel: str | None = None  # call | whatsapp
+
+
+@dataclass
+class OperatorCase:
+    """A household that needs a human: it asked for help or could not be reached."""
+
+    id: str
+    alert_id: str
+    household_id: str
+    site_id: str
+    tier: AlertTier
+    reason: ResponseKind  # NEEDS_HELP or NO_ANSWER
+    status: str = "open"  # open | closed
+    note: str = ""

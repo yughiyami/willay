@@ -197,6 +197,10 @@ class AsteriskAriAdapter:
     def from_env(cls, environ: Mapping[str, str]) -> "AsteriskAriAdapter":
         return cls(AsteriskAriConfig.from_env(environ))
 
+    @property
+    def allowlist(self) -> frozenset[str]:
+        return self._config.allowlist
+
     # -- public port ----------------------------------------------------------------
 
     def call(self, number: str, tier: AlertTier) -> CallResult:

@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Mapping, Sequence
 
+from willay.adapters.alert_ledger import InMemoryAlertLedger
+from willay.adapters.asterisk_ari import AsteriskAriAdapter, MissingAsteriskConfigError
 from willay.adapters.data_dir import DataDir, resolve_data_dir
 from willay.adapters.fixture_loader import load_backtest_fixture, load_rimac_fixture
 from willay.adapters.geodata.emergencies import (
@@ -24,18 +26,25 @@ from willay.adapters.geodata.emergencies import (
 )
 from willay.adapters.geodata.loader import load_real_world
 from willay.adapters.geodata.timeseries import load_enfen_csv
+from willay.adapters.households_fixture import load_households
 from willay.adapters.in_memory import InMemorySiteRepository
+from willay.adapters.simulated_call import SimulatedCallAdapter
+from willay.adapters.web_whatsapp import WebWhatsAppSimulator
 from willay.adapters.safe_points_file import FILE_NAME as SAFE_POINTS_FILE
 from willay.adapters.safe_points_file import load_proposed_safe_points
 from willay.adapters.reviewed_templates import FileReviewedTemplates
 from willay.application.district_backtest import STANDARD_EVENTS
 from willay.application.run_backtest import BacktestDataset
+from willay.domain.dispatch import Household
 from willay.domain.district_score import DEFAULT_WEIGHTS, DistrictFeatures, score_districts
 from willay.domain.entities import HazardContext, RainfallAnomaly
 from willay.domain.exposure import ExposureConfig
 from willay.ports.agent import AgentModelPort, StructuredExtractionPort
+from willay.ports.alert_ledger import AlertLedgerPort
+from willay.ports.calls import CallPort
 from willay.ports.image import ImagePort, TranscriptionPort
 from willay.ports.llm import LLMPort
+from willay.ports.messaging import MessagingPort
 from willay.ports.segmentation import VideoSegmentationPort
 from willay.ports.site_repository import SiteRepositoryPort
 
@@ -43,6 +52,7 @@ ENV_MODE = "WILLAY_DATA_MODE"
 ENV_ANOMALY = "WILLAY_SEASONAL_ANOMALY"
 ENV_TEMPLATES_DIR = "WILLAY_REVIEWED_TEMPLATES_DIR"
 ENV_META_ENABLED = "WILLAY_META_ENABLED"
+ENV_CALLS_ENABLED = "WILLAY_CALLS_ENABLED"
 DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "reviewed"
 REAL_DISCLAIMER = (
     "Real open data (INGEMMET, ANA, OSM, Copernicus DEM). Tailings risk attributes are sparse, water intakes are "
@@ -77,6 +87,12 @@ class AppDependencies:
     extractor: StructuredExtractionPort | None = None
     derived_dir: Path | None = None
     hazard_notes: Sequence[str] = ()
+    # Alert loop. Messages go to the web WhatsApp simulator and calls are simulated unless explicitly enabled.
+    households: Sequence[Household] = ()
+    messaging: MessagingPort = field(default_factory=WebWhatsAppSimulator)
+    calls: CallPort = field(default_factory=SimulatedCallAdapter)
+    calls_mode: str = "simulated"
+    ledger: AlertLedgerPort = field(default_factory=InMemoryAlertLedger)
 
 
 def reviewed_templates_from_env(environ: Mapping[str, str] | None = None) -> FileReviewedTemplates:
@@ -86,6 +102,7 @@ def reviewed_templates_from_env(environ: Mapping[str, str] | None = None) -> Fil
 
 def synthetic_dependencies() -> AppDependencies:
     fixture = load_rimac_fixture()
+    households = load_households()
     return AppDependencies(
         repository=InMemorySiteRepository(fixture.sites, fixture.settlements),
         hazard_scenario=fixture.hazard_scenario,
@@ -94,6 +111,8 @@ def synthetic_dependencies() -> AppDependencies:
         synthetic=fixture.synthetic,
         disclaimer=fixture.disclaimer,
         reviewed_templates=reviewed_templates_from_env(),
+        households=households,
+        calls=SimulatedCallAdapter({h.phone: h.demo_call_outcome for h in households}),
     )
 
 
@@ -231,6 +250,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
             "verified against the document text (scripts/ingest_enfen.py)",
         )
 
+    households = load_households(environ=env)
     results_path = data.derived("backtest_results.json")
     backtest_results = json.loads(results_path.read_text(encoding="utf-8")) if results_path.exists() else None
 
@@ -264,6 +284,8 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         reviewed_templates=reviewed_templates_from_env(env),
         derived_dir=data.derived(),
         hazard_notes=hazard_notes,
+        households=households,
+        calls=SimulatedCallAdapter({h.phone: h.demo_call_outcome for h in households}),
     )
 
 
@@ -290,17 +312,40 @@ def attach_meta_from_env(deps: AppDependencies, environ: Mapping[str, str] | Non
     return deps
 
 
+def attach_calls_from_env(deps: AppDependencies, environ: Mapping[str, str] | None = None) -> AppDependencies:
+    """Real phone calls through Asterisk ARI, only when WILLAY_CALLS_ENABLED=1 AND Asterisk is fully configured.
+
+    Anything else keeps the simulated adapter (no call is ever placed). Even with real calls, the adapter refuses
+    numbers outside WILLAY_CALL_ALLOWLIST. Only variable NAMES are ever reported, never values.
+    """
+    env = os.environ if environ is None else environ
+    if env.get(ENV_CALLS_ENABLED, "0").strip() != "1":
+        return deps
+    try:
+        adapter = AsteriskAriAdapter.from_env(env)
+    except MissingAsteriskConfigError as missing:
+        deps.calls_mode = f"simulated (calls enabled but Asterisk is not configured: {missing})"
+        return deps
+    except ValueError as invalid:
+        deps.calls_mode = f"simulated (calls enabled but the Asterisk configuration is invalid: {invalid})"
+        return deps
+    deps.calls = adapter
+    deps.calls_mode = f"asterisk (allow-list: {len(adapter.allowlist)} number(s))"
+    return deps
+
+
 def default_dependencies() -> AppDependencies:
     mode = os.environ.get(ENV_MODE, "real").strip().lower()
     if mode == "synthetic":
-        return attach_meta_from_env(synthetic_dependencies())
+        return attach_calls_from_env(attach_meta_from_env(synthetic_dependencies()))
     if mode == "real":
-        return attach_meta_from_env(real_dependencies())
+        return attach_calls_from_env(attach_meta_from_env(real_dependencies()))
     raise ValueError(f"{ENV_MODE} must be 'real' or 'synthetic', got '{mode}'")
 
 
 __all__ = [
     "AppDependencies",
+    "attach_calls_from_env",
     "attach_meta_from_env",
     "default_dependencies",
     "real_dependencies",

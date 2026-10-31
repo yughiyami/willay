@@ -1,0 +1,125 @@
+{
+  "synthetic": true,
+  "disclaimer": "SYNTHETIC DATA. Every household, label and phone number in this file is invented for development and demos. They are not real people. Replace them with your own number in a LOCAL copy (WILLAY_DEMO_HOUSEHOLDS_FILE) and allow-list it (WILLAY_CALL_ALLOWLIST) before trying a real call.",
+  "households": [
+    {
+      "id": "hh-001",
+      "settlement_id": "set-001",
+      "label": "Hogar sintetico 1 (Hamlet One)",
+      "phone": "+51900000001",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-002",
+      "settlement_id": "set-001",
+      "label": "Hogar sintetico 2 (Hamlet One)",
+      "phone": "+51900000002",
+      "demo_call_outcome": "NEEDS_HELP"
+    },
+    {
+      "id": "hh-003",
+      "settlement_id": "set-002",
+      "label": "Hogar sintetico 3 (Village Two)",
+      "phone": "+51900000003",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-004",
+      "settlement_id": "set-002",
+      "label": "Hogar sintetico 4 (Village Two)",
+      "phone": "+51900000004",
+      "demo_call_outcome": "NO_ANSWER"
+    },
+    {
+      "id": "hh-005",
+      "settlement_id": "set-003",
+      "label": "Hogar sintetico 5 (Town Three)",
+      "phone": "+51900000005",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-006",
+      "settlement_id": "set-003",
+      "label": "Hogar sintetico 6 (Town Three)",
+      "phone": "+51900000006",
+      "demo_call_outcome": "NO_ANSWER"
+    },
+    {
+      "id": "hh-007",
+      "settlement_id": "set-004",
+      "label": "Hogar sintetico 7 (Hamlet Four)",
+      "phone": "+51900000007",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-008",
+      "settlement_id": "set-005",
+      "label": "Hogar sintetico 8 (Suburb Five)",
+      "phone": "+51900000008",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-009",
+      "settlement_id": "set-006",
+      "label": "Hogar sintetico 9 (Off-river Hamlet Six)",
+      "phone": "+51900000009",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-011",
+      "settlement_id": "ana-1507220024",
+      "label": "Hogar sintetico 11 (San Miguel de Viso)",
+      "phone": "+51900000011",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-012",
+      "settlement_id": "ana-1507220024",
+      "label": "Hogar sintetico 12 (San Miguel de Viso)",
+      "phone": "+51900000012",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-013",
+      "settlement_id": "ana-1507010024",
+      "label": "Hogar sintetico 13 (Chacahuaro)",
+      "phone": "+51900000013",
+      "demo_call_outcome": "NEEDS_HELP"
+    },
+    {
+      "id": "hh-014",
+      "settlement_id": "ana-1507010024",
+      "label": "Hogar sintetico 14 (Chacahuaro)",
+      "phone": "+51900000014",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-015",
+      "settlement_id": "ana-1507010022",
+      "label": "Hogar sintetico 15 (Cacachaqui)",
+      "phone": "+51900000015",
+      "demo_call_outcome": "NO_ANSWER"
+    },
+    {
+      "id": "hh-016",
+      "settlement_id": "ana-1507010022",
+      "label": "Hogar sintetico 16 (Cacachaqui)",
+      "phone": "+51900000016",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-017",
+      "settlement_id": "ana-1507010001",
+      "label": "Hogar sintetico 17 (Matucana)",
+      "phone": "+51900000017",
+      "demo_call_outcome": "SAFE"
+    },
+    {
+      "id": "hh-018",
+      "settlement_id": "ana-1507010001",
+      "label": "Hogar sintetico 18 (Matucana)",
+      "phone": "+51900000018",
+      "demo_call_outcome": "SAFE"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from willay.api.dependencies import AppDependencies, default_dependencies
 from willay.api.schemas import BacktestIn, EvaluateAlertIn
 from willay.api.agent_routes import register_agent_routes
+from willay.api.alert_routes import register_alert_routes
 from willay.api.card_routes import register_card_routes
 from willay.api.watch_routes import register_watch_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
@@ -163,7 +164,12 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        return {"status": "ok", "synthetic_data": deps.synthetic, "data_mode": deps.data_mode}
+        return {
+            "status": "ok",
+            "synthetic_data": deps.synthetic,
+            "data_mode": deps.data_mode,
+            "calls_mode": deps.calls_mode,
+        }
 
     @app.get("/sites")
     def list_sites(
@@ -270,6 +276,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
         top_k = tuple(request.top_k_pcts) if request else None
         return backtest_response(event, top_k)
 
+    register_alert_routes(app, deps, find_ranked)
     register_watch_routes(app, deps)
     register_card_routes(app, deps)
     register_agent_routes(app, deps, lambda: ranked_sites())

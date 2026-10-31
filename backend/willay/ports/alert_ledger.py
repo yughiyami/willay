@@ -1,0 +1,23 @@
+from __future__ import annotations
+
+from typing import Protocol, Sequence
+
+from willay.domain.dispatch import HouseholdAlert, OperatorCase
+
+
+class AlertLedgerPort(Protocol):
+    """Where dispatched alerts, their answers and the operator cases are kept."""
+
+    def new_id(self, prefix: str) -> str: ...
+
+    def add_alert(self, alert: HouseholdAlert) -> None: ...
+
+    def get_alert(self, alert_id: str) -> HouseholdAlert | None: ...
+
+    def list_alerts(self) -> Sequence[HouseholdAlert]: ...
+
+    def add_case(self, case: OperatorCase) -> None: ...
+
+    def list_cases(self) -> Sequence[OperatorCase]: ...
+
+    def open_case_for(self, alert_id: str) -> OperatorCase | None: ...
