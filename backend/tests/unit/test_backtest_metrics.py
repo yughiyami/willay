@@ -153,3 +153,32 @@ def test_false_alarm_rate_zero_when_all_alerts_verified():
 def test_false_alarm_rate_undefined_without_alerts():
     assert false_alarm_rate([(False, True), (False, False)]) is None
     assert false_alarm_rate([]) is None
+
+
+# --- bootstrap confidence interval for the AUC ---------------------------------
+
+
+def test_bootstrap_ci_of_a_perfect_separation_is_degenerate_at_one():
+    from willay.domain.backtest_metrics import bootstrap_auc_ci
+
+    lo, hi = bootstrap_auc_ci([0.1, 0.2, 0.8, 0.9], [0, 0, 1, 1], n_resamples=200, seed=1)
+    assert (lo, hi) == (1.0, 1.0)
+
+
+def test_bootstrap_ci_brackets_the_point_estimate_and_is_reproducible():
+    from willay.domain.backtest_metrics import bootstrap_auc_ci, roc_auc
+
+    scores = [0.1, 0.4, 0.35, 0.8, 0.65, 0.2, 0.9, 0.5, 0.3, 0.7]
+    labels = [0, 0, 1, 1, 0, 0, 1, 1, 0, 1]
+    first = bootstrap_auc_ci(scores, labels, n_resamples=500, seed=7)
+    again = bootstrap_auc_ci(scores, labels, n_resamples=500, seed=7)
+    assert first == again
+    assert first[0] <= roc_auc(scores, labels) <= first[1]
+    assert 0.0 <= first[0] < first[1] <= 1.0
+
+
+def test_bootstrap_ci_needs_both_classes():
+    from willay.domain.backtest_metrics import bootstrap_auc_ci
+
+    with pytest.raises(ValueError):
+        bootstrap_auc_ci([0.1, 0.2], [1, 1])
