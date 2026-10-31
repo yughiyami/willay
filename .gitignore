@@ -1,0 +1,28 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# node
+node_modules/
+web/dist/
+
+# data and large media
+data/raw/
+data/raw
+*.laz
+*.las
+*.tif
+*.tiff
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.zip
