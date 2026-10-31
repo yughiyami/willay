@@ -65,7 +65,14 @@ def normalize_log_volume(volume_m3: float, config: RiskConfig) -> float:
     return _clamp01((math.log10(volume_m3) - lo) / (hi - lo))
 
 
+# Neutral defaults for attributes the source does not declare. They sit mid-scale on purpose:
+# an unknown attribute neither reassures nor condemns a site. Sites using them carry a
+# data_quality flag so the ranking can be read with that caveat.
+NEUTRAL_STATUS_FACTOR = 0.7  # midpoint of ACTIVE (0.4) and ABANDONED (1.0)
+NEUTRAL_DECLARED_RISK_FACTOR = 0.5  # same as MEDIUM
+
 _STATUS_FACTOR = {
+    SiteStatus.UNKNOWN: NEUTRAL_STATUS_FACTOR,
     SiteStatus.ACTIVE: 0.4,
     SiteStatus.INACTIVE: 0.7,
     SiteStatus.ABANDONED: 1.0,
@@ -78,6 +85,7 @@ def status_factor(status: SiteStatus) -> float:
 
 
 _DECLARED_RISK_FACTOR = {
+    RiskLevel.UNKNOWN: NEUTRAL_DECLARED_RISK_FACTOR,
     RiskLevel.LOW: 0.25,
     RiskLevel.MEDIUM: 0.5,
     RiskLevel.HIGH: 0.75,

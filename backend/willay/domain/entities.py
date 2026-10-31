@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 
 
@@ -61,14 +62,22 @@ class SenamhiLevel(OrderedEnum):
 
 
 class SiteStatus(Enum):
+    """Operating status of a tailings site. UNKNOWN means the source does not say."""
+
+    UNKNOWN = "unknown"
     ACTIVE = "active"
     INACTIVE = "inactive"
     ABANDONED = "abandoned"
 
 
 class RiskLevel(OrderedEnum):
-    """Declared risk level of a tailings site."""
+    """Declared risk level of a tailings site.
 
+    UNKNOWN means the source does not declare one. It is declared first only so the enum
+    stays closed; its position in the ordering carries no meaning (never compare it).
+    """
+
+    UNKNOWN = "unknown"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -152,6 +161,9 @@ class TailingsSite:
     province: str = ""
     synthetic: bool = False
     flow_path: FlowPath | None = None
+    data_quality: tuple[str, ...] = ()
+    in_basin: bool = True
+    area_m2: float | None = None
 
     def __post_init__(self) -> None:
         _check_coordinates(self.lon, self.lat)
@@ -173,3 +185,34 @@ class HazardContext:
     water_rise_cm: float | None = None
     watcher_report: bool = False
     operator_confirmed: bool = False
+
+
+@dataclass(frozen=True)
+class WaterIntake:
+    """A drinking-water intake. Coordinates from open sources are approximate."""
+
+    id: str
+    name: str
+    lon: float
+    lat: float
+    operator: str = ""
+    kind: str = ""
+    approximate: bool = True
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        _check_coordinates(self.lon, self.lat)
+
+
+@dataclass(frozen=True)
+class Emergency:
+    """One reported emergency (district + date only; no coordinates)."""
+
+    ubigeo: str
+    district: str
+    date: date
+    hazard: str
+
+    def __post_init__(self) -> None:
+        if len(self.ubigeo) != 6 or not self.ubigeo.isdigit():
+            raise ValueError(f"ubigeo must be 6 digits, got '{self.ubigeo}'")
