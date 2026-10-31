@@ -148,3 +148,35 @@ export interface DistrictCollection {
   scoring: { weights: Record<string, number>; method: string; emergency_hazards: string[] };
   features: { type: "Feature"; geometry: unknown; properties: DistrictProperties }[];
 }
+
+// --- operator assistant -------------------------------------------------------
+
+export type LayerName = "sites" | "flowpaths" | "settlements" | "districts" | "intakes" | "pasivos";
+
+export type UiAction =
+  | { type: "fly_to"; lon: number; lat: number; height_m: number; label: string | null }
+  | { type: "highlight_site"; site_id: string }
+  | { type: "highlight_flow_path"; site_id: string }
+  | { type: "toggle_layer"; layer: LayerName; visible: boolean };
+
+export interface AgentReply {
+  transcript: string;
+  answer_es: string;
+  ui_actions: UiAction[];
+  tools_used: string[];
+  flags: string[];
+  response_id: string;
+}
+
+export interface PasivoItem {
+  id?: string;
+  name: string;
+  lon: number;
+  lat: number;
+}
+
+export interface PasivosLayer {
+  secondary: boolean;
+  note: string;
+  items: PasivoItem[];
+}

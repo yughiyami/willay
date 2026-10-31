@@ -17,6 +17,9 @@
           <legend>Map layers</legend>
           <label><input type="checkbox" id="toggle-paths" checked /> Downstream flow paths</label>
           <label><input type="checkbox" id="toggle-intakes" checked /> Water intakes (approximate)</label>
+          <label><input type="checkbox" id="toggle-sites" checked /> Tailings sites</label>
+          <label><input type="checkbox" id="toggle-settlements" checked /> Reached settlements</label>
+          <label><input type="checkbox" id="toggle-pasivos" /> MINEM 2011 liabilities (referential)</label>
           <label class="select-row">
             District choropleth
             <select id="district-metric">
@@ -28,6 +31,24 @@
             </select>
           </label>
           <p id="district-legend" class="muted legend"></p>
+        </fieldset>
+        <fieldset class="controls" id="assistant">
+          <legend>Operator assistant (answers in Spanish)</legend>
+          <form id="agent-form">
+            <input id="agent-input" type="text" maxlength="2000" autocomplete="off"
+              placeholder="Ej.: llévame al relave de mayor riesgo" aria-label="Question for the assistant" />
+            <div class="agent-buttons">
+              <button type="submit" id="agent-send">Send</button>
+              <button type="button" id="agent-mic" aria-pressed="false">Talk</button>
+            </div>
+          </form>
+          <p id="agent-status" class="muted" role="status"></p>
+          <p id="agent-transcript" class="muted"></p>
+          <p id="agent-answer" class="agent-answer"></p>
+          <p class="muted legend">
+            Voice and text go to a third-party model: do not mention personal data. The assistant never sets alert
+            tiers and cannot confirm an evacuation.
+          </p>
         </fieldset>
         <ul id="site-list"></ul>
         <section id="detail" hidden></section>

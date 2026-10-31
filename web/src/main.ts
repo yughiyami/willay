@@ -9,27 +9,33 @@ import {
 } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
-import { fetchDistricts, fetchFlowPaths, fetchIntakes, fetchSiteDetail, fetchSites } from "./api";
+import { fetchDistricts, fetchFlowPaths, fetchIntakes, fetchPasivos, fetchSiteDetail, fetchSites } from "./api";
+import { initAgentPanel } from "./agentPanel";
+import { executeUiActions } from "./uiActions";
 import {
   DISTRICT_LEGENDS,
   DistrictLayer,
   type DistrictMetric,
   PATH_PREFIX,
+  SITE_PREFIX,
   addFlowPaths,
   addIntakes,
+  addPasivos,
   clearReachedSettlements,
   highlightPath,
   setIntakesVisible,
+  setPasivosVisible,
   setPathsVisible,
+  setReachedVisible,
+  setSitesVisible,
   showReachedSettlements,
 } from "./layers";
 import { renderDetail, renderDistrict, renderSiteList } from "./panel";
 import { riskColorCss } from "./riskColor";
-import type { Site } from "./types";
+import type { LayerName, Site } from "./types";
 
 // Rimac basin, approximate center.
 const BASIN_CENTER = { lon: -76.6, lat: -11.8 };
-const SITE_PREFIX = "site-";
 
 const viewer = new Viewer("globe", {
   baseLayer: new ImageryLayer(
@@ -56,19 +62,24 @@ const listEl = document.getElementById("site-list") as HTMLElement;
 const detailEl = document.getElementById("detail") as HTMLElement;
 const pathsToggle = document.getElementById("toggle-paths") as HTMLInputElement;
 const intakesToggle = document.getElementById("toggle-intakes") as HTMLInputElement;
+const sitesToggle = document.getElementById("toggle-sites") as HTMLInputElement;
+const settlementsToggle = document.getElementById("toggle-settlements") as HTMLInputElement;
+const pasivosToggle = document.getElementById("toggle-pasivos") as HTMLInputElement;
 const districtSelect = document.getElementById("district-metric") as HTMLSelectElement;
 const legendEl = document.getElementById("district-legend") as HTMLElement;
 
 const districts = new DistrictLayer(viewer);
 
-async function select(site: Site, sites: Site[]): Promise<void> {
+async function select(site: Site, sites: Site[], fly = true): Promise<void> {
   renderDetail(detailEl, site, null);
   highlightPath(viewer, site.id);
   showReachedSettlements(viewer, site.exposure?.settlements ?? []);
-  viewer.camera.flyTo({
-    destination: Cartesian3.fromDegrees(site.lon, site.lat, 60_000),
-    duration: 1.2,
-  });
+  if (fly) {
+    viewer.camera.flyTo({
+      destination: Cartesian3.fromDegrees(site.lon, site.lat, 60_000),
+      duration: 1.2,
+    });
+  }
   try {
     const detail = await fetchSiteDetail(site.id);
     renderDetail(detailEl, site, detail);
@@ -90,6 +101,12 @@ async function loadOptionalLayers(sites: Site[]): Promise<void> {
     setIntakesVisible(viewer, intakesToggle.checked);
   } catch {
     intakesToggle.disabled = true;
+  }
+  try {
+    addPasivos(viewer, await fetchPasivos());
+    setPasivosVisible(viewer, pasivosToggle.checked);
+  } catch {
+    pasivosToggle.disabled = true;
   }
   try {
     await districts.load(await fetchDistricts());
@@ -122,12 +139,45 @@ async function main(): Promise<void> {
     renderSiteList(listEl, data.sites, (site) => void select(site, data.sites));
     await loadOptionalLayers(data.sites);
 
+    sitesToggle.addEventListener("change", () => setSitesVisible(viewer, sitesToggle.checked));
+    settlementsToggle.addEventListener("change", () => setReachedVisible(viewer, settlementsToggle.checked));
+    pasivosToggle.addEventListener("change", () => setPasivosVisible(viewer, pasivosToggle.checked));
     pathsToggle.addEventListener("change", () => setPathsVisible(viewer, pathsToggle.checked));
     intakesToggle.addEventListener("change", () => setIntakesVisible(viewer, intakesToggle.checked));
     districtSelect.addEventListener("change", () => {
       const metric = districtSelect.value as DistrictMetric;
       districts.setMetric(metric);
       legendEl.textContent = DISTRICT_LEGENDS[metric];
+    });
+
+    const layerToggles: Partial<Record<LayerName, HTMLInputElement>> = {
+      sites: sitesToggle,
+      flowpaths: pathsToggle,
+      settlements: settlementsToggle,
+      intakes: intakesToggle,
+      pasivos: pasivosToggle,
+    };
+    initAgentPanel({
+      onReply: (reply) =>
+        executeUiActions(reply.ui_actions, {
+          viewer,
+          selectSite: (siteId) => {
+            const site = data.sites.find((s) => s.id === siteId);
+            if (site) void select(site, data.sites, false);
+          },
+          setLayerVisible: (layer, visible) => {
+            if (layer === "districts") {
+              if (districtSelect.disabled) return;
+              districtSelect.value = visible ? "static" : "off";
+              districtSelect.dispatchEvent(new Event("change"));
+              return;
+            }
+            const toggle = layerToggles[layer];
+            if (!toggle || toggle.disabled) return;
+            toggle.checked = visible;
+            toggle.dispatchEvent(new Event("change"));
+          },
+        }),
     });
 
     viewer.selectedEntityChanged.addEventListener((entity) => {

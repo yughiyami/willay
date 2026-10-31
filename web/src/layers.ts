@@ -14,6 +14,7 @@ import type {
   DistrictProperties,
   FlowPathCollection,
   IntakeLayer,
+  PasivosLayer,
   Site,
   SettlementExposure,
 } from "./types";
@@ -90,6 +91,46 @@ export function setPathsVisible(viewer: Viewer, visible: boolean): void {
 }
 
 const REACHED_PREFIX = "reached-";
+export const SITE_PREFIX = "site-";
+export const PASIVO_PREFIX = "pasivo-";
+let reachedVisible = true;
+
+export function setSitesVisible(viewer: Viewer, visible: boolean): void {
+  for (const entity of viewer.entities.values) {
+    if (entity.id.startsWith(SITE_PREFIX)) entity.show = visible;
+  }
+}
+
+export function setReachedVisible(viewer: Viewer, visible: boolean): void {
+  reachedVisible = visible;
+  for (const entity of viewer.entities.values) {
+    if (entity.id.startsWith(REACHED_PREFIX)) entity.show = visible;
+  }
+}
+
+/** MINEM 2011 liabilities: a secondary, referential layer (hidden until asked for). */
+export function addPasivos(viewer: Viewer, layer: PasivosLayer): void {
+  layer.items.forEach((item, index) => {
+    viewer.entities.add({
+      id: `${PASIVO_PREFIX}${item.id ?? index}`,
+      name: `${item.name} (MINEM 2011, referential)`,
+      show: false,
+      position: Cartesian3.fromDegrees(item.lon, item.lat),
+      point: {
+        pixelSize: 6,
+        color: Color.fromCssColorString("#a98467"),
+        outlineColor: Color.WHITE,
+        outlineWidth: 1,
+      },
+    });
+  });
+}
+
+export function setPasivosVisible(viewer: Viewer, visible: boolean): void {
+  for (const entity of viewer.entities.values) {
+    if (entity.id.startsWith(PASIVO_PREFIX)) entity.show = visible;
+  }
+}
 
 export function showReachedSettlements(viewer: Viewer, settlements: SettlementExposure[]): void {
   clearReachedSettlements(viewer);
@@ -97,6 +138,7 @@ export function showReachedSettlements(viewer: Viewer, settlements: SettlementEx
     if (!s.lon && !s.lat) continue;
     viewer.entities.add({
       id: `${REACHED_PREFIX}${s.settlement_id}`,
+      show: reachedVisible,
       name: `${s.settlement_name} (pop. ${s.population})`,
       position: Cartesian3.fromDegrees(s.lon, s.lat),
       point: {
