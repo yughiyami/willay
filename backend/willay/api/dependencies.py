@@ -100,6 +100,25 @@ def _current_hazard(bulletins, anomaly: RainfallAnomaly) -> tuple[HazardContext,
     return context, f"ENFEN Comunicado Oficial N°{latest.number} ({latest.date.isoformat()})"
 
 
+def _verified_enfen_ingest(data: DataDir, bulletins) -> RainfallAnomaly | None:
+    """Seasonal rainfall outlook from `derived/enfen_hazard.json` (scripts/ingest_enfen.py), or None.
+
+    Used only when the ingest is verified (no flags), refers to the latest curated communique and carries an
+    outlook. Anything else falls back to the configured default.
+    """
+    path = data.derived("enfen_hazard.json")
+    if not path.exists() or not bulletins:
+        return None
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        latest = max(bulletins, key=lambda b: b.date)
+        if not record.get("verified") or record.get("number") != latest.number or not record.get("seasonal_rainfall_anomaly"):
+            return None
+        return RainfallAnomaly(record["seasonal_rainfall_anomaly"])
+    except (ValueError, OSError, TypeError, KeyError):
+        return None
+
+
 def _district_collection(world, data: DataDir) -> Mapping | None:
     features_path = data.derived("district_features.json")
     if not features_path.exists():
@@ -193,11 +212,15 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
     env = os.environ if environ is None else environ
     data = data or DataDir(resolve_data_dir(env))
     world = load_real_world(data)
-    anomaly = RainfallAnomaly(env.get(ENV_ANOMALY, RainfallAnomaly.NORMAL.value))
-
     enfen_path = data.processed("enfen_timeline.csv")
     bulletins = load_enfen_csv(enfen_path) if enfen_path.exists() else []
+    anomaly = RainfallAnomaly(env.get(ENV_ANOMALY, RainfallAnomaly.NORMAL.value))
+    ingested = _verified_enfen_ingest(data, bulletins) if ENV_ANOMALY not in env else None
+    if ingested is not None:
+        anomaly = ingested
     hazard, source = _current_hazard(bulletins, anomaly)
+    if ingested is not None:
+        source += f"; seasonal rainfall outlook verified against the communique text ({anomaly.value})"
 
     results_path = data.derived("backtest_results.json")
     backtest_results = json.loads(results_path.read_text(encoding="utf-8")) if results_path.exists() else None
