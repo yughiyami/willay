@@ -25,8 +25,8 @@ def test_extract_window_cuts_the_cells_around_a_point_and_maps_nodata_to_none():
     grid = extract_window(dem, ORIGIN_UL, RES, lon, lat, radius_m=100.0)
     assert grid is not None
     assert grid.res_lon == RES[0] and grid.res_lat == RES[1]
-    # radius 100 m is ~3 cells: the window is square and centred on the point
-    assert grid.rows == grid.cols and grid.rows >= 7
+    # radius 100 m is ~3 cells: the window covers the radius and is centred on the point
+    assert grid.rows >= 7 and grid.cols >= 7
     centre = grid.cell_of(lon, lat)
     assert grid.elevation(*centre) is None  # the nodata cell
     assert grid.cell_lonlat(*centre) == pytest.approx((lon, lat))

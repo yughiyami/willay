@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from willay.application.safe_point_text import NO_SAFE_POINT, describe_proposed_safe_point
 from willay.domain.entities import AlertTier
+from willay.domain.safe_point import SafePoint
 from willay.ports.image import ImagePort
 
 CARD_SIZE = "1024x1536"
@@ -20,7 +22,6 @@ _TITLES = {
     AlertTier.EVACUATION: "EVACÚE AHORA",
 }
 _FOOTER = "Esta alerta complementa a SENAMHI, INDECI y ENFEN"
-_NO_SAFE_POINT = "Punto seguro: consulte a Defensa Civil"
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class CardRequest:
     distance_km: float
     safe_point: str | None
     tier: AlertTier
+    proposed_safe_point: SafePoint | None = None  # used only when there is no curated safe_point
 
     def __post_init__(self) -> None:
         if self.distance_km < 0:
@@ -49,11 +51,17 @@ def card_text_lines(request: CardRequest) -> dict[str, str]:
     if request.tier not in _TITLES:
         raise ValueError("cards exist only for the household tiers PREPARATION, ATTENTION and EVACUATION")
     km = f"{request.distance_km:.1f}".replace(".", ",")
+    if request.safe_point:
+        safe_point = f"Punto seguro: {request.safe_point.strip()}"
+    elif request.proposed_safe_point is not None:
+        safe_point = f"Punto seguro: {describe_proposed_safe_point(request.proposed_safe_point, 'es')}"
+    else:
+        safe_point = NO_SAFE_POINT["es"]
     return {
         "title": _TITLES[request.tier],
         "community": f"Comunidad: {request.settlement_name.strip()}",
         "distance": f"Distancia al relave: {km} km",
-        "safe_point": f"Punto seguro: {request.safe_point.strip()}" if request.safe_point else _NO_SAFE_POINT,
+        "safe_point": safe_point,
         "footer": _FOOTER,
     }
 

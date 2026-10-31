@@ -20,6 +20,9 @@ class EvacuationCardIn(BaseModel):
     settlement_name: str = Field(min_length=1, max_length=80)
     distance_km: float = Field(ge=0, le=500, description="Distance along the tailings flow path")
     safe_point: str | None = Field(default=None, max_length=80)
+    settlement_id: str | None = Field(
+        default=None, max_length=80, description="Resolves the curated or proposed safe point when safe_point is not given"
+    )
     tier: Literal["PREPARATION", "ATTENTION", "EVACUATION"] = Field(description="Tier from /alerts/evaluate (domain rules)")
     synthetic_household: Literal[True] = Field(
         description="Must be true: requests go to a third-party model, so only synthetic households are allowed"
@@ -31,9 +34,16 @@ def register_card_routes(app: FastAPI, deps: AppDependencies) -> None:
     def evacuation_card(request: EvacuationCardIn) -> dict:
         if deps.image_generator is None:
             raise HTTPException(status_code=503, detail="the image model is not configured (set WILLAY_META_ENABLED=1 and META_API_KEY)")
+        safe_point, proposed = request.safe_point, None
+        if request.settlement_id is not None:
+            settlement = next((s for s in deps.repository.list_settlements() if s.id == request.settlement_id), None)
+            if settlement is None:
+                raise HTTPException(status_code=404, detail=f"unknown settlement '{request.settlement_id}'")
+            safe_point = safe_point or settlement.safe_point
+            proposed = settlement.proposed_safe_point
         try:
             card = build_card(
-                CardRequest(request.settlement_name, request.distance_km, request.safe_point, AlertTier(request.tier)),
+                CardRequest(request.settlement_name, request.distance_km, safe_point, AlertTier(request.tier), proposed),
                 deps.image_generator,
             )
         except BudgetExceededError as exc:

@@ -11,6 +11,7 @@ from willay.api.agent_routes import register_agent_routes
 from willay.api.card_routes import register_card_routes
 from willay.api.watch_routes import register_watch_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
+from willay.application.safe_point_text import PROPOSED_LABEL
 from willay.ports.templates import TemplateNotAvailable
 from willay.application.district_backtest import recompute_top_k
 from willay.application.evaluate_alert_tier import evaluate_alert_tier
@@ -106,6 +107,23 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             },
         }
 
+    def safe_point_info(settlement) -> dict:
+        if settlement is not None and settlement.safe_point:
+            return {"kind": "curated", "name": settlement.safe_point}
+        proposed = settlement.proposed_safe_point if settlement is not None else None
+        if proposed is None:
+            return {"kind": "none"}
+        return {
+            "kind": "proposed",
+            "label": PROPOSED_LABEL["es"],
+            "lon": proposed.lon,
+            "lat": proposed.lat,
+            "distance_m": round(proposed.distance_m),
+            "bearing_deg": round(proposed.bearing_deg),
+            "elevation_m": round(proposed.elevation_m),
+            "height_above_flow_m": round(proposed.height_above_flow_m),
+        }
+
     def compose_for(ranked: RankedSite, tier: AlertTier, language: str | None = None) -> dict | None:
         if tier is AlertTier.NONE or ranked.exposure is None or ranked.exposure.nearest is None:
             return None
@@ -119,6 +137,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
                     distance_km=nearest.along_path_m / 1000.0,
                     safe_point=settlement.safe_point if settlement else None,
                     official_source=deps.official_source,
+                    proposed_safe_point=settlement.proposed_safe_point if settlement else None,
                 ),
                 llm=deps.llm,
                 language=language,
@@ -139,6 +158,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             "rephrased": message.rephrased,
             "language": message.language,
             "available": True,
+            "safe_point": safe_point_info(settlement),
         }
 
     @app.get("/health")

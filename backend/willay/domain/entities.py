@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from willay.domain.safe_point import SafePoint
+
 
 class OrderedEnum(Enum):
     """Enum whose members compare by declaration order."""
@@ -149,6 +151,8 @@ class Settlement:
     safe_point: str | None = None
     ubigeo: str = ""
     district: str = ""
+    # Computed from the DEM when no curated safe_point exists; always shown as a proposal to validate.
+    proposed_safe_point: SafePoint | None = None
 
     def __post_init__(self) -> None:
         _check_coordinates(self.lon, self.lat)
