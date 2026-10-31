@@ -19,7 +19,12 @@ from willay.domain.tiers import TierEvaluation
 from willay.ports.llm import LLMPort
 from willay.ports.site_repository import SiteRepositoryPort
 
-LOCAL_WEB_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+LOCAL_WEB_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",  # vite preview
+    "http://127.0.0.1:4173",
+]
 
 
 @dataclass
