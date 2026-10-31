@@ -39,6 +39,11 @@ class EvaluateAlertIn(BaseModel):
     watcher_report: bool = False
     operator_confirmed: bool = False
     thresholds: ThresholdsIn | None = None
+    language: str | None = Field(
+        default=None,
+        pattern=r"^[a-z]{2,3}$",
+        description="Message language: es (default for households), en, or a code with a human-reviewed template (e.g. qu)",
+    )
 
     @model_validator(mode="after")
     def _needs_site_or_static_risk(self) -> "EvaluateAlertIn":

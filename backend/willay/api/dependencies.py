@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Mapping, Sequence
@@ -23,6 +24,7 @@ from willay.adapters.geodata.emergencies import (
 from willay.adapters.geodata.loader import load_real_world
 from willay.adapters.geodata.timeseries import load_enfen_csv
 from willay.adapters.in_memory import InMemorySiteRepository
+from willay.adapters.reviewed_templates import FileReviewedTemplates
 from willay.application.district_backtest import STANDARD_EVENTS
 from willay.application.run_backtest import BacktestDataset
 from willay.domain.district_score import DEFAULT_WEIGHTS, DistrictFeatures, score_districts
@@ -33,6 +35,8 @@ from willay.ports.site_repository import SiteRepositoryPort
 
 ENV_MODE = "WILLAY_DATA_MODE"
 ENV_ANOMALY = "WILLAY_SEASONAL_ANOMALY"
+ENV_TEMPLATES_DIR = "WILLAY_REVIEWED_TEMPLATES_DIR"
+DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "reviewed"
 REAL_DISCLAIMER = (
     "Real open data (INGEMMET, ANA, OSM, Copernicus DEM). Tailings risk attributes are sparse, water intakes are "
     "approximate OpenStreetMap locations and flow paths come from a 30 m DEM: verify before any operational use. "
@@ -60,6 +64,11 @@ class AppDependencies:
     reviewed_templates: object | None = None
 
 
+def reviewed_templates_from_env(environ: Mapping[str, str] | None = None) -> FileReviewedTemplates:
+    env = os.environ if environ is None else environ
+    return FileReviewedTemplates(env.get(ENV_TEMPLATES_DIR) or DEFAULT_TEMPLATES_DIR)
+
+
 def synthetic_dependencies() -> AppDependencies:
     fixture = load_rimac_fixture()
     return AppDependencies(
@@ -69,6 +78,7 @@ def synthetic_dependencies() -> AppDependencies:
         backtest_dataset=load_backtest_fixture(),
         synthetic=fixture.synthetic,
         disclaimer=fixture.disclaimer,
+        reviewed_templates=reviewed_templates_from_env(),
     )
 
 
@@ -205,6 +215,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         pasivos=world.pasivos,
         district_collection=_district_collection(world, data),
         backtest_results=backtest_results,
+        reviewed_templates=reviewed_templates_from_env(env),
     )
 
 

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from willay.api.dependencies import AppDependencies, default_dependencies
 from willay.api.schemas import BacktestIn, EvaluateAlertIn
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
+from willay.ports.templates import TemplateNotAvailable
 from willay.application.district_backtest import recompute_top_k
 from willay.application.evaluate_alert_tier import evaluate_alert_tier
 from willay.application.rank_sites import RankedSite, rank_sites
@@ -102,26 +103,39 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             },
         }
 
-    def compose_for(ranked: RankedSite, tier: AlertTier) -> dict | None:
+    def compose_for(ranked: RankedSite, tier: AlertTier, language: str | None = None) -> dict | None:
         if tier is AlertTier.NONE or ranked.exposure is None or ranked.exposure.nearest is None:
             return None
         nearest = ranked.exposure.nearest
         settlement = next((s for s in deps.repository.list_settlements() if s.id == nearest.settlement_id), None)
-        message = compose_alert_message(
-            AlertMessageInput(
-                tier=tier,
-                site_name=ranked.site.name,
-                distance_km=nearest.along_path_m / 1000.0,
-                safe_point=settlement.safe_point if settlement else None,
-                official_source=deps.official_source,
-            ),
-            llm=deps.llm,
-        )
+        try:
+            message = compose_alert_message(
+                AlertMessageInput(
+                    tier=tier,
+                    site_name=ranked.site.name,
+                    distance_km=nearest.along_path_m / 1000.0,
+                    safe_point=settlement.safe_point if settlement else None,
+                    official_source=deps.official_source,
+                ),
+                llm=deps.llm,
+                language=language,
+                templates=deps.reviewed_templates,  # type: ignore[arg-type]
+            )
+        except TemplateNotAvailable as unavailable:
+            # The tier stays; only the message text is missing, and it is never machine-generated.
+            return {
+                "tier": tier.value,
+                "available": False,
+                "language": unavailable.language,
+                "reason": str(unavailable),
+            }
         return {
             "tier": message.tier.value,
             "text": message.text,
             "audience": message.audience,
             "rephrased": message.rephrased,
+            "language": message.language,
+            "available": True,
         }
 
     @app.get("/health")
@@ -204,7 +218,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
         evaluation = evaluate_alert_tier(request.to_context(), static_risk, config)
         body = _evaluation_to_dict(evaluation)
         body["site_static_risk"] = static_risk
-        body["message"] = compose_for(ranked, evaluation.tier) if ranked is not None else None
+        body["message"] = compose_for(ranked, evaluation.tier, request.language) if ranked is not None else None
         return body
 
     def backtest_response(event: str | None, top_k: tuple[int, ...] | None) -> dict:
