@@ -234,6 +234,7 @@ def test_model_scores_cover_our_score_the_cenepred_baselines_and_population():
         "cenepred_mm_only",
         "cenepred_flood_only",
         "population_baseline",
+        "ensemble_static_cenepred",
     }
     assert models["willay_static"]["1"] > models["willay_static"]["2"]
     assert models["cenepred_baseline"] == {"1": 3.0, "2": 1.0}  # mean of the available values
@@ -247,3 +248,24 @@ def test_our_score_is_independent_of_the_scenario_baseline():
     low = [ScenarioBaseline("1", "A", 1, 0.0, 0.0), ScenarioBaseline("2", "B", 1, 0.0, 0.0)]
     high = [ScenarioBaseline("1", "A", 99, 5.0, 5.0), ScenarioBaseline("2", "B", 99, 5.0, 5.0)]
     assert build_model_scores(features, low)["willay_static"] == build_model_scores(features, high)["willay_static"]
+
+
+def test_ensemble_is_the_equal_weight_rank_average_of_our_score_and_the_cenepred_mean():
+    features = [
+        DistrictFeatures("1", "A", 0.9, 30.0, 5000, 3),
+        DistrictFeatures("2", "B", 0.5, 20.0, 1000, 1),
+        DistrictFeatures("3", "C", 0.1, 5.0, 0, 0),
+    ]
+    baselines = [
+        ScenarioBaseline("1", "A", 1, 1.0, 1.0),  # CENEPRED ranks the districts in the opposite order
+        ScenarioBaseline("2", "B", 1, 3.0, 3.0),
+        ScenarioBaseline("3", "C", 1, 5.0, 5.0),
+    ]
+    models = build_model_scores(features, baselines)
+    assert models["ensemble_static_cenepred"] == {"1": 0.5, "2": 0.5, "3": 0.5}
+
+
+def test_ensemble_only_exists_for_districts_with_both_inputs():
+    features = [DistrictFeatures("1", "A", 0.9, 30.0, 5000, 3), DistrictFeatures("2", "B", 0.1, 5.0, 0, 0)]
+    baselines = [ScenarioBaseline("1", "A", 1, 2.0, 2.0)]
+    assert set(build_model_scores(features, baselines)["ensemble_static_cenepred"]) == {"1"}

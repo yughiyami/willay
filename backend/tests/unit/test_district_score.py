@@ -114,3 +114,30 @@ def test_invalid_weights_are_rejected():
         DistrictScoreConfig(weights={"unknown_feature": 1.0})
     with pytest.raises(ValueError):
         DistrictScoreConfig(weights={})
+
+
+# --- rank average (ensemble) ------------------------------------------------------------------------------
+
+
+def test_rank_average_combines_percentile_ranks_not_raw_values():
+    from willay.domain.district_score import rank_average
+
+    a = {"1": 0.1, "2": 0.5, "3": 0.9}
+    b = {"1": 1000.0, "2": 10.0, "3": 20.0}  # a different scale: only the order matters
+    combined = rank_average(a, b)
+    # ranks: a -> 0, .5, 1 ; b -> 1, 0, .5
+    assert combined == {"1": 0.5, "2": 0.25, "3": 0.75}
+
+
+def test_rank_average_uses_only_districts_present_in_every_map():
+    from willay.domain.district_score import rank_average
+
+    combined = rank_average({"1": 1.0, "2": 2.0, "3": 3.0}, {"2": 5.0, "3": 4.0})
+    assert set(combined) == {"2", "3"}
+    assert combined == {"2": 0.5, "3": 0.5}
+
+
+def test_rank_average_of_a_single_map_is_its_percentile_rank():
+    from willay.domain.district_score import rank_average
+
+    assert rank_average({"1": 3.0, "2": 9.0}) == {"1": 0.0, "2": 1.0}
