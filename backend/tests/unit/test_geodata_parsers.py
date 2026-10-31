@@ -81,7 +81,7 @@ def test_status_vocabulary(raw, expected):
 
 @pytest.mark.parametrize(
     "raw, expected",
-    [("Muy alto", RiskLevel.VERY_HIGH), ("Medio", RiskLevel.MEDIUM), ("bajo", RiskLevel.LOW), ("Altó", RiskLevel.UNKNOWN)],
+    [("Muy alto", RiskLevel.VERY_HIGH), ("Medio", RiskLevel.MEDIUM), ("bajo", RiskLevel.LOW), ("Extremo", RiskLevel.UNKNOWN)],
 )
 def test_risk_vocabulary_unrecognised_values_stay_unknown(raw, expected):
     assert parse_tailings_rows([tailings_row(RIESGO=raw)])[0].declared_risk is expected
