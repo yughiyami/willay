@@ -2,3 +2,9 @@ fastapi==0.162.0
 uvicorn==0.54.0
 httpx==0.28.1
 pydantic==2.14.2
+
+# Offline data-build scripts and geodata adapters only (never imported by domain/application).
+# Real data is read from WILLAY_DATA_DIR (default ../willay-data) and is never copied into this repo.
+numpy==2.4.6
+shapely==2.1.2
+tifffile==2026.7.14
