@@ -55,11 +55,50 @@ Offline scripts (need numpy, shapely, tifffile from `requirements.txt`) write on
 .venv/Scripts/python -I scripts/build_site_features.py      # susceptibility sample + distance to river
 .venv/Scripts/python -I scripts/build_district_features.py  # static district features + simplified polygons
 .venv/Scripts/python -I scripts/run_backtest.py             # derived/backtest_results.json
+.venv/Scripts/python -I scripts/build_safe_points.py        # derived/safe_points.geojson (proposed safe points)
 ```
 
 Unknown tailings status/risk map to `unknown` and use documented neutral defaults (0.7 / 0.5) plus a
 `data_quality` flag. ANA population is `Pob_rev` (never the corrupted `Pob`). The CENEPRED 2027 scenario is
 only a comparison baseline.
+
+## Safe points (proposed, never official)
+
+`scripts/build_safe_points.py` proposes one safe point per settlement with a deterministic rule
+(`backend/willay/domain/safe_point.py`, pure and tested on tiny synthetic grids): the **nearest** cell of the
+clipped Copernicus DEM that is (a) at least **30 m** above the nearest flow-path cell, (b) at least **300 m** from any
+flow path, (c) within **2 km** in a straight line and (d) on a slope below **20 degrees**
+(`--height --distance --radius --slope` override the defaults). Settlements without such a cell get none.
+
+- A curated `safe_point` always wins. A proposed point is always worded "propuesto — validar con la municipalidad".
+- Without any point the message says "Consulte a su municipalidad el punto seguro" (never "no definido").
+- The output is `willay-data/derived/safe_points.geojson`; the API reads it at start-up in real mode.
+- Caveats: 30 m DSM; "flow path" means only the D8 paths traced from the tailings sites, not every river; if no
+  flow path lies within the search window nothing can be verified and no point is proposed.
+
+## Alert loop and telephony
+
+`POST /alerts/dispatch` (`site_id`, `tier`, `operator_confirmation_id` required for `EVACUATION`) messages every
+**synthetic** demo household downstream of the site (`backend/fixtures/households_synthetic.json`) through
+`MessagingPort`; the bundled `WebWhatsAppSimulator` only keeps the messages for the web phone mock-up. At
+`ATTENTION` and `EVACUATION` it also calls each household through `CallPort`. Answers are `SAFE`, `NEEDS_HELP`,
+`NO_ANSWER`; the last two open an operator case. Household messages are four short Spanish lines (situation, one
+action, safe point, source). Phone numbers are masked in every response.
+
+Calls are **simulated unless `WILLAY_CALLS_ENABLED=1` and Asterisk is configured**, and even then the adapter only
+dials numbers in `WILLAY_CALL_ALLOWLIST`. Full setup (Asterisk snippets, recordings, what is unverified) is in
+`docs/TELEPHONY.md`.
+
+Environment variable NAMES for the alert loop (set values in your local `.env`; `.env.example` could not be edited by
+the tooling that built this, so add them there yourself):
+
+```
+WILLAY_CALLS_ENABLED=0            WILLAY_CALL_ALLOWLIST=            ASTERISK_ARI_URL=
+ASTERISK_ARI_USER=                ASTERISK_ARI_PASSWORD=            ASTERISK_TRUNK_NAME=
+ASTERISK_ARI_APP=willay           WILLAY_CALL_DTMF_TIMEOUT_S=30     WILLAY_CALL_RING_TIMEOUT_S=30
+WILLAY_CALL_SOUND_PREPARATION=    WILLAY_CALL_SOUND_ATTENTION=      WILLAY_CALL_SOUND_EVACUATION=
+WILLAY_DEMO_HOUSEHOLDS_FILE=
+```
 
 ## Alert languages
 
@@ -82,11 +121,13 @@ Hexagonal, screaming structure. Dependencies point inward only (enforced by `tes
 ```
 backend/
   willay/
-    domain/        entities, risk.py, tiers.py, exposure.py, backtest_metrics.py, geo.py, segmentation.py, water_line.py (pure Python)
+    domain/        entities, risk.py, tiers.py, exposure.py, backtest_metrics.py, geo.py, segmentation.py, water_line.py,
+                   safe_point.py, dispatch.py (pure Python)
     application/   rank_sites, evaluate_alert_tier, compose_alert_message, run_backtest, operator_agent, enfen_ingest,
-                   watch_clip, evacuation_card, judge_messages
-    ports/         Protocols: SiteRepository, HazardData, Weather, Messaging, LLM, Segmentation, Image, Transcription
-    adapters/      in-memory fakes, fixture loader, meta_model_api (Responses/ASR/Image/SAM HTTP), meta_usage, clip_media
+                   watch_clip, evacuation_card, judge_messages, dispatch_alerts, safe_point_text
+    ports/         Protocols: SiteRepository, HazardData, Weather, Messaging, Calls, AlertLedger, LLM, Segmentation, Image, Transcription
+    adapters/      in-memory fakes, fixture loader, meta_model_api (Responses/ASR/Image/SAM HTTP), meta_usage, clip_media,
+                   asterisk_ari (telephony), simulated_call, web_whatsapp, alert_ledger, dem_window, safe_points_file
     api/           FastAPI app
   fixtures/        synthetic Rimac-basin and backtest JSON
   tests/           unit + api
@@ -122,6 +163,9 @@ Endpoints (interactive docs at `http://localhost:8000/docs`):
 | GET/POST | `/backtest?event=2017\|2023` | stored district backtest (synthetic mode: the synthetic fixture) |
 | POST | `/agent/text`, `/agent/voice` | Spanish operator assistant (text, or WAV audio -> Voice Transcribe -> Muse Spark with tools); returns `{transcript, answer_es, ui_actions}` |
 | POST | `/watch/clip` | river watcher: MP4/MOV (<= 15 s, no people) + marker height in cm -> SAM 3.1 -> `rise_cm`, confidence, overlays |
+| POST | `/alerts/dispatch` | message (and at ATTENTION/EVACUATION call) the synthetic households downstream of a site; EVACUATION needs `operator_confirmation_id` |
+| GET | `/alerts/households`, `/alerts/cases?status=` | household statuses (sent / SAFE / NEEDS_HELP / NO_ANSWER) and operator cases |
+| POST | `/alerts/{id}/response` | a simulator reply (`SAFE`, `NEEDS_HELP`, `NO_ANSWER`); SAFE closes the open case |
 | POST | `/cards/evacuation` | one Spanish evacuation card image for a SYNTHETIC household (tier from the domain rules) |
 
 Example:
