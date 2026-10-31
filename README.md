@@ -46,7 +46,8 @@ ENFEN scale: neutral < weak < moderate < strong < extraordinary. All thresholds 
 
 ## Real-data pipeline
 
-Offline scripts (need numpy, shapely, tifffile from `requirements.txt`) write only to `willay-data/derived/`:
+Offline scripts (need numpy, shapely, tifffile from `requirements.txt`) write only to `willay-data/derived/`
+(the backtest also reports an equal-weight rank-average ensemble of our score and the CENEPRED scenario, see `docs/BACKTEST.md`):
 
 ```bash
 .venv/Scripts/python -I scripts/build_flowpaths.py          # D8 paths from the Copernicus DEM (flowpaths.geojson)
@@ -81,10 +82,11 @@ Hexagonal, screaming structure. Dependencies point inward only (enforced by `tes
 ```
 backend/
   willay/
-    domain/        entities, risk.py, tiers.py, exposure.py, backtest_metrics.py, geo.py (pure Python)
-    application/   rank_sites, evaluate_alert_tier, compose_alert_message, run_backtest
+    domain/        entities, risk.py, tiers.py, exposure.py, backtest_metrics.py, geo.py, segmentation.py, water_line.py (pure Python)
+    application/   rank_sites, evaluate_alert_tier, compose_alert_message, run_backtest, operator_agent, enfen_ingest,
+                   watch_clip, evacuation_card, judge_messages
     ports/         Protocols: SiteRepository, HazardData, Weather, Messaging, LLM, Segmentation, Image, Transcription
-    adapters/      in-memory fakes, fixture loader, meta_model_api (OpenAI-compatible HTTP skeleton)
+    adapters/      in-memory fakes, fixture loader, meta_model_api (Responses/ASR/Image/SAM HTTP), meta_usage, clip_media
     api/           FastAPI app
   fixtures/        synthetic Rimac-basin and backtest JSON
   tests/           unit + api
@@ -118,6 +120,9 @@ Endpoints (interactive docs at `http://localhost:8000/docs`):
 | GET | `/layers/pasivos`, `/layers/intakes` | MINEM 2011 liabilities (secondary), approximate OSM intakes |
 | POST | `/alerts/evaluate` | hazard inputs (+ `site_id` or `site_static_risk`, optional `language`) to tier, reasons and message |
 | GET/POST | `/backtest?event=2017\|2023` | stored district backtest (synthetic mode: the synthetic fixture) |
+| POST | `/agent/text`, `/agent/voice` | Spanish operator assistant (text, or WAV audio -> Voice Transcribe -> Muse Spark with tools); returns `{transcript, answer_es, ui_actions}` |
+| POST | `/watch/clip` | river watcher: MP4/MOV (<= 15 s, no people) + marker height in cm -> SAM 3.1 -> `rise_cm`, confidence, overlays |
+| POST | `/cards/evacuation` | one Spanish evacuation card image for a SYNTHETIC household (tier from the domain rules) |
 
 Example:
 
@@ -142,16 +147,40 @@ The globe is centered on the Rimac basin, uses OpenStreetMap imagery and an elli
 token needed). Points are colored by risk; selecting one shows the factor breakdown, current tier and
 downstream settlements. Set `VITE_API_BASE_URL` to point at another backend.
 
-## Meta model API (optional)
+## Meta model API (optional, live calls cost credits)
 
-Copy `.env.example` to `.env` (never commit it) and set `META_API_KEY`. The adapter in
-`backend/willay/adapters/meta_model_api.py` talks to the OpenAI-compatible base URL
-`https://api.meta.ai/v1` with `muse-spark-1.3` (text), `muse-voice-transcribe-1.0` (transcription),
-`sam-3.1` (segmentation, still a skeleton) and `muse-image-1.0` (images). Its tests use a mocked HTTP
-transport only; the test suite never calls the real API.
+Copy `.env.example` to `.env` (never commit it) and set `META_API_KEY` (and optionally `META_API_BASE_URL`). The key is
+loaded at runtime only, never printed, and redacted from errors. Nothing is wired unless `WILLAY_META_ENABLED=1`; without it
+the `/agent`, `/watch` and `/cards` endpoints answer 503. The verified request contract (Responses API, Voice Transcribe,
+Muse Image, SAM 3.1), prices and the list of things we could not verify are in `docs/META_API.md`.
+
+- **Spend control**: every live call is appended to `<willay-data>/derived/meta_usage.jsonl` (model, tokens/frames/images/seconds,
+  estimated cost; never prompts or media) and refused once the cumulative estimate would exceed `WILLAY_META_BUDGET_USD`
+  (default 3.0).
+- **Privacy**: free-credit content can be used by Meta. Send only public official documents, synthetic households and clips
+  without people (`/watch/clip` requires `no_people_confirmed=true`, `/cards/evacuation` requires `synthetic_household=true`).
+  We call only Standard-mode models.
+- **The LLM never decides a tier.** The operator agent's tools call our use cases; `evaluate_alert` returns the tier from the domain
+  rules, has no way to pass operator confirmation, and an answer that states a tier code no tool returned is replaced.
+- **ENFEN ingestion**: `scripts/ingest_enfen.py --pdf <file> --live` has Muse Spark extract `{number, date, alert_status, Nino 1+2
+  by month, Nino 3.4, rain outlook by region with verbatim quotes}` from a communique PDF. The curated `enfen_timeline.csv` wins
+  on any mismatch (flag raised), a communique missing from the timeline is never used, and each rain outlook is re-derived from
+  its quote by fixed rules and the quote must appear in the document text. A verified result feeds the seasonal rainfall outlook
+  of the `HazardContext` (region "costa central"; `WILLAY_SEASONAL_ANOMALY` overrides it).
+- **River watcher**: see `docs/WATCHER_PROTOCOL.md` (geometry, recording protocol, validation plan; accuracy on real water is
+  unmeasured). Dry run: `scripts/make_synthetic_clip.py` then `scripts/watch_clip_cli.py`.
+- **Muse Wonder judge**: `scripts/judge_messages.py --live` has Wonder score 10 composed Spanish messages (advisory; the code's
+  fact check is authoritative). Results in `derived/message_judgements.json`.
+- **Live smoke tests**: skipped by default. Run them once on purpose with `.venv/Scripts/python -m pytest -m live`.
+  The normal suite uses mocked HTTP only and never calls the real API.
+
+The web app has an operator assistant box (text or a microphone button; the browser records, converts to 16 kHz mono WAV and
+posts it). The assistant moves the Cesium camera, highlights a site and its flow path and toggles layers through `ui_actions`.
+Start the backend with `WILLAY_META_ENABLED=1` to use it.
 
 ## Status
 
 Real-data adapters for the INGEMMET tailings inventory, ANA settlements, OSM intakes, INDECI, CHIRPS and ENFEN
-timeline are in place behind the existing ports. Not yet connected: live SENAMHI warnings and forecasts,
-real LLM/segmentation calls, SEDAPAL intake locations.
+timeline are in place behind the existing ports, and the Meta Model API is wired for the operator agent, ENFEN
+ingestion, the river watcher (contract confirmed, accuracy on real rivers not yet measured), evacuation cards and the
+advisory judge. Not yet connected: live SENAMHI warnings and forecasts, SEDAPAL intake locations, ENFEN communique N°19.
