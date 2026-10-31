@@ -30,7 +30,10 @@ from willay.application.run_backtest import BacktestDataset
 from willay.domain.district_score import DEFAULT_WEIGHTS, DistrictFeatures, score_districts
 from willay.domain.entities import HazardContext, RainfallAnomaly
 from willay.domain.exposure import ExposureConfig
+from willay.ports.agent import AgentModelPort, StructuredExtractionPort
+from willay.ports.image import ImagePort, TranscriptionPort
 from willay.ports.llm import LLMPort
+from willay.ports.segmentation import VideoSegmentationPort
 from willay.ports.site_repository import SiteRepositoryPort
 
 ENV_MODE = "WILLAY_DATA_MODE"
@@ -62,6 +65,13 @@ class AppDependencies:
     district_collection: Mapping | None = None
     backtest_results: Mapping | None = None
     reviewed_templates: object | None = None
+    # Live Meta capabilities. None means "not configured": the matching endpoints answer 503.
+    video_segmenter: VideoSegmentationPort | None = None
+    agent_model: AgentModelPort | None = None
+    transcriber: TranscriptionPort | None = None
+    image_generator: ImagePort | None = None
+    extractor: StructuredExtractionPort | None = None
+    derived_dir: Path | None = None
 
 
 def reviewed_templates_from_env(environ: Mapping[str, str] | None = None) -> FileReviewedTemplates:

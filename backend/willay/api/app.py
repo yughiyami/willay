@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from willay.api.dependencies import AppDependencies, default_dependencies
 from willay.api.schemas import BacktestIn, EvaluateAlertIn
+from willay.api.watch_routes import register_watch_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
 from willay.ports.templates import TemplateNotAvailable
 from willay.application.district_backtest import recompute_top_k
@@ -245,6 +246,8 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
     def backtest_post(request: BacktestIn | None = None, event: str | None = Query(default=None)) -> dict:
         top_k = tuple(request.top_k_pcts) if request else None
         return backtest_response(event, top_k)
+
+    register_watch_routes(app, deps)
 
     return app
 
