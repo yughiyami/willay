@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "disclaimer": "SYNTHETIC BACKTEST DATA. Scores, dates and outcomes are invented to exercise the metrics code. They carry no evidential value about real districts or past events.",
+  "districts": [
+    {"district": "SYN-D01", "score": 0.92, "emergency": true,  "first_preparation_alert": "2026-01-10", "emergency_date": "2026-03-05"},
+    {"district": "SYN-D02", "score": 0.85, "emergency": true,  "first_preparation_alert": "2026-01-15", "emergency_date": "2026-02-20"},
+    {"district": "SYN-D03", "score": 0.77, "emergency": false, "first_preparation_alert": "2026-01-20", "emergency_date": null},
+    {"district": "SYN-D04", "score": 0.70, "emergency": true,  "first_preparation_alert": "2026-02-01", "emergency_date": "2026-03-12"},
+    {"district": "SYN-D05", "score": 0.61, "emergency": false, "first_preparation_alert": null, "emergency_date": null},
+    {"district": "SYN-D06", "score": 0.55, "emergency": false, "first_preparation_alert": null, "emergency_date": null},
+    {"district": "SYN-D07", "score": 0.48, "emergency": true,  "first_preparation_alert": null, "emergency_date": "2026-02-27"},
+    {"district": "SYN-D08", "score": 0.40, "emergency": false, "first_preparation_alert": null, "emergency_date": null},
+    {"district": "SYN-D09", "score": 0.31, "emergency": false, "first_preparation_alert": null, "emergency_date": null},
+    {"district": "SYN-D10", "score": 0.22, "emergency": false, "first_preparation_alert": null, "emergency_date": null},
+    {"district": "SYN-D11", "score": 0.15, "emergency": false, "first_preparation_alert": null, "emergency_date": null},
+    {"district": "SYN-D12", "score": 0.08, "emergency": false, "first_preparation_alert": null, "emergency_date": null}
+  ],
+  "evacuation_events": [
+    {"district": "SYN-D01", "alerted": true,  "emergency_followed": true},
+    {"district": "SYN-D02", "alerted": true,  "emergency_followed": true},
+    {"district": "SYN-D03", "alerted": true,  "emergency_followed": false},
+    {"district": "SYN-D04", "alerted": true,  "emergency_followed": true},
+    {"district": "SYN-D07", "alerted": false, "emergency_followed": true},
+    {"district": "SYN-D05", "alerted": false, "emergency_followed": false}
+  ]
+}
