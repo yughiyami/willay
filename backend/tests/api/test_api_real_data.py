@@ -168,3 +168,29 @@ def test_unknown_data_mode_is_rejected(monkeypatch):
     monkeypatch.setenv("WILLAY_DATA_MODE", "maybe")
     with pytest.raises(ValueError):
         default_dependencies()
+
+
+# --- derived/safe_points.geojson ----------------------------------------------------
+
+
+def test_proposed_safe_points_from_the_derived_file_reach_the_settlements(tmp_path):
+    import json
+
+    from willay.adapters.safe_points_file import build_collection
+    from willay.domain.safe_point import SafePoint, SafePointConfig
+
+    root = build_data_dir(tmp_path)
+    point = SafePoint(-76.49, -11.89, 3200.0, 900.0, 90.0, 55.0, 450.0, 9.0)
+    entries = [("ana-9001", "VILLA UNO", -76.50, -11.90, point), ("ana-9002", "VILLA DOS", -76.50, -12.00, None)]
+    (root / "derived" / "safe_points.geojson").write_text(
+        json.dumps(build_collection(entries, SafePointConfig())), encoding="utf-8"
+    )
+    deps = real_dependencies(DataDir(root))
+    by_id = {s.id: s for s in deps.repository.list_settlements()}
+    assert by_id["ana-9001"].proposed_safe_point.height_above_flow_m == 55.0
+    assert by_id["ana-9002"].proposed_safe_point is None
+
+
+def test_real_mode_without_the_safe_points_file_still_works(tmp_path):
+    deps = real_dependencies(DataDir(build_data_dir(tmp_path)))
+    assert all(s.proposed_safe_point is None for s in deps.repository.list_settlements())
