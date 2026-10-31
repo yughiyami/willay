@@ -143,7 +143,7 @@ def main() -> None:
             parts = [
                 f"{name}: n={s['n']} med={s['median']} (p25 {s['p25']}, p75 {s['p75']}) none={s['n_without_lead']}"
                 for name, s in by_model.items()
-                if name in ("willay_static", "cenepred_baseline", "population_baseline")
+                if name in ("willay_static", "cenepred_baseline", "population_baseline", "ensemble_static_cenepred")
             ]
             print(f"  gate {gate} (first eligible {first_day})")
             for part in parts:

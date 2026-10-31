@@ -14,7 +14,7 @@ from typing import Mapping, Sequence
 
 from willay.application.run_backtest import BacktestDataset, DistrictRecord, run_backtest
 from willay.domain.backtest_metrics import bootstrap_auc_ci, lead_time_stats, top_k_capture_rate
-from willay.domain.district_score import DistrictFeatures, percentile_ranks, score_districts
+from willay.domain.district_score import DistrictFeatures, percentile_ranks, rank_average, score_districts
 from willay.domain.entities import (
     AlertTier,
     DailyRain,
@@ -68,6 +68,7 @@ def build_model_scores(
         "cenepred_mm_only": {},
         "cenepred_flood_only": {},
         "population_baseline": {},
+        "ensemble_static_cenepred": {},
     }
     for b in baselines:
         present = [v for v in (b.flood_value, b.mm_value) if v is not None]
@@ -78,6 +79,8 @@ def build_model_scores(
         if b.flood_value is not None:
             models["cenepred_flood_only"][b.ubigeo] = b.flood_value
         models["population_baseline"][b.ubigeo] = float(b.population)
+    # Fixed a-priori ensemble (equal weights, rank-average): our static score and the CENEPRED scenario mean.
+    models["ensemble_static_cenepred"] = rank_average(models["willay_static"], models["cenepred_baseline"])
     return models
 
 

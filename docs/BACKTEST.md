@@ -36,6 +36,11 @@ event year are dropped for that event (1 point before 2017, 52 before 2023).
 CENEPRED El Nino 2027 district risk (mean of flood and mass-movement risk values; the two components are also
 reported separately) and a population-only baseline (census 2017 population).
 
+**Ensemble (added later, all baselines kept).** `ensemble_static_cenepred` is the equal-weight rank-average of our
+static score and the CENEPRED mean (percentile rank of each, averaged; `domain/district_score.rank_average`). The weights
+(0.5 / 0.5) were fixed before the run and nothing was fitted to the labels. It is a *comparison of a combination*, not a
+clean out-of-sample model: its CENEPRED half is a 2027 scenario, not a hindcast (limitation 5).
+
 **Metrics.** ROC AUC (Mann-Whitney) with a 95% percentile-bootstrap interval (1000 resamples of districts);
 top-k% capture (share of positive districts inside the top k% scored; ties share slots), shown with its
 ceiling (`max` = slots / positives) because with a 60-67% base rate a top-20% list of 16 districts cannot capture
@@ -66,25 +71,27 @@ Base rate 2017: 52/78 = 0.67. Base rate 2023: 48/78 = 0.62.
 |---|---|---|---|---|---|
 | 2017 | **Willay static** | **0.93** [0.86, 0.98] | 0.15 | 0.31 | 0.31 |
 | 2017 | CENEPRED (mean) | 0.77 [0.66, 0.87] | 0.13 | 0.27 | 0.31 |
+| 2017 | Ensemble (rank-avg static + CENEPRED) | 0.90 [0.80, 0.97] | 0.15 | 0.29 | 0.31 |
 | 2017 | CENEPRED mass movement only | 0.91 [0.83, 0.97] | 0.15 | 0.29 | 0.31 |
 | 2017 | CENEPRED flood only | 0.37 [0.26, 0.50] | 0.13 | 0.23 | 0.31 |
 | 2017 | Population only | 0.25 [0.15, 0.37] | 0.12 | 0.19 | 0.31 |
 | 2023 | **Willay static** | **0.63** [0.49, 0.75] | 0.10 | 0.23 | 0.33 |
 | 2023 | CENEPRED (mean) | 0.80 [0.70, 0.89] | 0.17 | 0.31 | 0.33 |
+| 2023 | Ensemble (rank-avg static + CENEPRED) | 0.75 [0.63, 0.85] | 0.13 | 0.29 | 0.33 |
 | 2023 | CENEPRED mass movement only | 0.73 [0.61, 0.84] | 0.13 | 0.29 | 0.33 |
 | 2023 | CENEPRED flood only | 0.63 [0.50, 0.75] | 0.13 | 0.29 | 0.33 |
 | 2023 | Population only | 0.52 [0.40, 0.65] | 0.15 | 0.27 | 0.33 |
 
 Lead time in days (median, p25-p75, n districts with a lead / n without), by gate:
 
-| Event | Gate (first eligible day) | Willay static | CENEPRED | Population |
-|---|---|---|---|---|
-| 2017 | strict (never) | none (0/52) | none | none |
-| 2017 | weak_enfen_only (2017-01-24) | 9 d, 5.8-25.8, n=20 / 32 | 40 d, 8-50, n=25 / 27 | 50 d, 8-51, n=15 / 37 |
-| 2017 | **weak_rain80 (2017-02-13, primary)** | 23.5 d, 17.8-29.3, n=6 / 46 | 30 d, 29-31, n=13 / 39 | 30.5 d, 30-31, n=10 / 42 |
-| 2017 | weak_rain120 (never) | none | none | none |
-| 2023 | strict (never) | none (0/48) | none | none |
-| 2023 | weak (all variants, 2023-03-16) | 6 d, 5.5-10.5, n=3 / 45 | 5 d, 5-5.5, n=3 / 45 | 6 d, n=1 / 47 |
+| Event | Gate (first eligible day) | Willay static | CENEPRED | Population | Ensemble |
+|---|---|---|---|---|---|
+| 2017 | strict (never) | none (0/52) | none | none | none |
+| 2017 | weak_enfen_only (2017-01-24) | 9 d, 5.8-25.8, n=20 / 32 | 40 d, 8-50, n=25 / 27 | 50 d, 8-51, n=15 / 37 | 9 d, 2-47.5, n=24 / 28 |
+| 2017 | **weak_rain80 (2017-02-13, primary)** | 23.5 d, 17.8-29.3, n=6 / 46 | 30 d, 29-31, n=13 / 39 | 30.5 d, 30-31, n=10 / 42 | 29 d, 27-30, n=9 / 43 |
+| 2017 | weak_rain120 (never) | none | none | none | none |
+| 2023 | strict (never) | none (0/48) | none | none | none |
+| 2023 | weak (all variants, 2023-03-16) | 6 d, 5.5-10.5, n=3 / 45 | 5 d, 5-5.5, n=3 / 45 | 6 d, n=1 / 47 | 5 d, 5-5, n=2 / 46 |
 
 ## Reading the numbers honestly
 
@@ -101,6 +108,13 @@ Lead time in days (median, p25-p75, n districts with a lead / n without), by gat
   only 3 of 48 districts have any lead, at 5-6 days. In 2017 the alert (24 Jan / 2 Feb) preceded the March peak
   by weeks, but many districts had their first emergency in January-February, before eligibility; a gate that waits for
   80 mm shortens the lead further. ENFEN status is a coarse, basin-wide, months-scale trigger.
+- **Ensemble: it hedges, it does not win.** In 2017 it sits between our score and CENEPRED (AUC 0.90 vs 0.93 and 0.77),
+  in 2023 between CENEPRED and ours (0.75 vs 0.80 and 0.63). Its mean AUC over the two events (0.82) is the highest of the
+  three, but its worst event (0.75) is not better than CENEPRED's worst (0.77), and every interval overlaps: with two events
+  and 78 districts this is not a distinguishable gain. Top-k capture and lead times are in between too (primary gate 2017:
+  29 d for 9 districts vs 23.5 d for 6 with our score alone, 30 d for 13 with CENEPRED). The honest claim is only "averaging
+  ranks avoided the worst single-model result in each event"; we did not tune the weights to get it. Do not read it as
+  evidence that the combination generalises, and remember its CENEPRED half is a scenario, not a hindcast.
 - Top-k capture is bounded by the high base rate; precision and AUC are more informative here.
 - Only two events and 78 districts: intervals are wide and metric differences below about 0.1 AUC are not distinguishable.
 

@@ -116,3 +116,18 @@ def score_districts(
             )
         )
     return scores
+
+
+def rank_average(*score_maps: Mapping[str, float]) -> dict[str, float]:
+    """Equal-weight average of percentile ranks, over the districts present in every map.
+
+    Only the order within each map matters (scales are not comparable), so the combination needs no fitted
+    weights. A single common district gets the neutral rank 0.5.
+    """
+    if not score_maps:
+        return {}
+    common = sorted(set.intersection(*(set(m) for m in score_maps)))
+    if not common:
+        return {}
+    per_map = [percentile_ranks([m[u] for u in common]) for m in score_maps]
+    return {u: sum(ranks[i] for ranks in per_map) / len(per_map) for i, u in enumerate(common)}  # type: ignore[misc]
