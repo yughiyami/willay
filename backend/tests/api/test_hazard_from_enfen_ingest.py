@@ -62,7 +62,14 @@ def test_explicit_environment_override_wins_over_the_ingest(tmp_path):
     assert get()["hazard_context"]["seasonal_rainfall_anomaly"] == "below_normal"
 
 
-def test_the_source_mentions_the_verified_rain_outlook(tmp_path):
+def test_the_source_citation_stays_plain_and_the_provenance_goes_to_hazard_notes(tmp_path):
     root, get = hazard(tmp_path)
     write_hazard(root)
-    assert "03-2017" in get()["official_source"]
+    body = get()
+    assert body["official_source"] == "ENFEN Comunicado Oficial N°03-2017 (2017-02-02)"  # cited verbatim in household messages
+    assert any("rainfall outlook" in note and "above_normal" in note for note in body["hazard_notes"])
+
+
+def test_hazard_notes_are_empty_without_an_ingest(tmp_path):
+    _, get = hazard(tmp_path)
+    assert get()["hazard_notes"] == []

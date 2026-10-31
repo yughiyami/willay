@@ -38,6 +38,21 @@ class FakeExtractor:
         return self.result
 
 
+def test_approved_standard_wording_is_sent_so_it_is_not_judged_as_an_addition():
+    extractor = FakeExtractor({"judgements": [verdict(1)]})
+    judge_messages([item(1, approved_text="Siga los boletines.")], extractor)
+    (call,) = extractor.calls
+    assert "Siga los boletines." in call["content"][0]["text"]
+    assert "pre-approved" in call["instructions"].lower()
+
+
+def test_action_text_is_the_template_wording_of_the_tier():
+    from willay.application.compose_alert_message import action_text
+
+    assert "EVACÚE AHORA" in action_text(AlertTier.EVACUATION, "es")
+    assert "EVACUATE NOW" in action_text(AlertTier.EVACUATION, "en")
+
+
 def verdict(i, clarity=5, faithfulness=5, ok=True, issues=()):
     return {"id": f"m{i}", "clarity": clarity, "faithfulness": faithfulness, "low_literacy_ok": ok, "issues": list(issues)}
 
