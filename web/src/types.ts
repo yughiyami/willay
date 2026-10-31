@@ -180,3 +180,61 @@ export interface PasivosLayer {
   note: string;
   items: PasivoItem[];
 }
+
+// --- alert loop (synthetic households only) --------------------------------------
+
+export type HouseholdTier = "PREPARATION" | "ATTENTION" | "EVACUATION";
+export type HouseholdResponse = "SAFE" | "NEEDS_HELP" | "NO_ANSWER";
+
+export interface HouseholdAlert {
+  id: string;
+  dispatch_id: string;
+  site_id: string;
+  tier: HouseholdTier;
+  household_id: string;
+  household_label: string;
+  phone_masked: string;
+  settlement_name: string;
+  lon: number;
+  lat: number;
+  message_text: string;
+  message_language: string;
+  message_status: "sent" | "failed" | "pending";
+  call_status: "not_attempted" | "completed" | "blocked" | "error";
+  call_detail: string;
+  response: HouseholdResponse | null;
+  response_channel: "call" | "whatsapp" | null;
+}
+
+export interface OperatorCase {
+  id: string;
+  alert_id: string;
+  household_id: string;
+  household_label: string;
+  settlement_name: string;
+  lon: number | null;
+  lat: number | null;
+  site_id: string;
+  tier: HouseholdTier;
+  reason: "NEEDS_HELP" | "NO_ANSWER";
+  status: "open" | "closed";
+  note: string;
+}
+
+export interface DispatchReply {
+  dispatch_id: string;
+  tier: HouseholdTier;
+  site_id: string;
+  operator_confirmation_id: string | null;
+  households_targeted: number;
+  synthetic_households: boolean;
+  calls_mode: string;
+  alerts: HouseholdAlert[];
+  cases: OperatorCase[];
+}
+
+export interface HouseholdsReply {
+  synthetic_households: boolean;
+  counts: Record<"AWAITING" | HouseholdResponse, number>;
+  alerts: HouseholdAlert[];
+}

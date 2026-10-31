@@ -50,6 +50,45 @@
             tiers and cannot confirm an evacuation.
           </p>
         </fieldset>
+        <fieldset class="controls" id="operator">
+          <legend>Operator: alert the households (synthetic)</legend>
+          <label class="select-row">Site <select id="op-site"></select></label>
+          <label class="select-row">
+            Tier
+            <select id="op-tier">
+              <option value="PREPARATION">PREPARATION (message only)</option>
+              <option value="ATTENTION" selected>ATTENTION (message + call)</option>
+              <option value="EVACUATION">EVACUATION (message + call)</option>
+            </select>
+          </label>
+          <p id="op-evaluated" class="muted legend"></p>
+          <label class="select-row" id="op-confirm-row" hidden>
+            Operator confirmation id (required)
+            <input id="op-confirm" type="text" maxlength="80" autocomplete="off" placeholder="e.g. OP-2026-0007" />
+          </label>
+          <div class="agent-buttons">
+            <button type="button" id="op-send">Send alerts</button>
+            <button type="button" id="op-refresh">Refresh</button>
+          </div>
+          <p id="op-status" class="muted" role="status"></p>
+          <p id="op-counts" class="muted"></p>
+          <table class="reach hh-table">
+            <thead><tr><th>Household</th><th>Settlement</th><th>Status</th></tr></thead>
+            <tbody id="op-households"></tbody>
+          </table>
+          <h3>Open operator cases</h3>
+          <ul id="op-cases" class="case-list"></ul>
+          <h3>Phone simulator</h3>
+          <div class="phone" aria-label="Simulated phone">
+            <div class="phone-header" id="phone-title">Select a household</div>
+            <div class="phone-screen" id="phone-screen"></div>
+            <div class="phone-buttons" id="phone-buttons"></div>
+          </div>
+          <p class="muted legend">
+            Only SYNTHETIC households. Nothing is sent to a real phone: messages stay in this simulator and calls are
+            simulated unless real telephony is enabled on the server. Replies here count as WhatsApp answers.
+          </p>
+        </fieldset>
         <ul id="site-list"></ul>
         <section id="detail" hidden></section>
         <p class="honesty">

@@ -1,8 +1,14 @@
 import type {
   AgentReply,
+  DispatchReply,
   DistrictCollection,
   FlowPathCollection,
+  HouseholdAlert,
+  HouseholdResponse,
+  HouseholdsReply,
+  HouseholdTier,
   IntakeLayer,
+  OperatorCase,
   PasivosLayer,
   SiteDetail,
   SitesResponse,
@@ -30,7 +36,7 @@ export const fetchIntakes = (): Promise<IntakeLayer> => getJson<IntakeLayer>("/l
 /** Only available with real data; the caller treats a failure as "layer not available". */
 export const fetchDistricts = (): Promise<DistrictCollection> => getJson<DistrictCollection>("/districts");
 
-async function postForReply(path: string, init: RequestInit): Promise<AgentReply> {
+async function postJson<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", ...init });
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;
@@ -42,11 +48,11 @@ async function postForReply(path: string, init: RequestInit): Promise<AgentReply
     }
     throw new Error(detail);
   }
-  return (await response.json()) as AgentReply;
+  return (await response.json()) as T;
 }
 
 export const askAgentText = (text: string, previousResponseId: string | null): Promise<AgentReply> =>
-  postForReply("/agent/text", {
+  postJson<AgentReply>("/agent/text", {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, previous_response_id: previousResponseId }),
   });
@@ -55,7 +61,33 @@ export function askAgentVoice(wav: Blob, previousResponseId: string | null): Pro
   const form = new FormData();
   form.append("audio", wav, "question.wav");
   if (previousResponseId) form.append("previous_response_id", previousResponseId);
-  return postForReply("/agent/voice", { body: form });
+  return postJson<AgentReply>("/agent/voice", { body: form });
 }
 
 export const fetchPasivos = (): Promise<PasivosLayer> => getJson<PasivosLayer>("/layers/pasivos");
+
+// --- alert loop ----------------------------------------------------------------------
+
+export const dispatchAlerts = (
+  siteId: string,
+  tier: HouseholdTier,
+  operatorConfirmationId: string | null,
+): Promise<DispatchReply> =>
+  postJson<DispatchReply>("/alerts/dispatch", {
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ site_id: siteId, tier, operator_confirmation_id: operatorConfirmationId }),
+  });
+
+export const fetchHouseholdAlerts = (): Promise<HouseholdsReply> => getJson<HouseholdsReply>("/alerts/households");
+
+export const fetchCases = (): Promise<{ cases: OperatorCase[] }> => getJson<{ cases: OperatorCase[] }>("/alerts/cases");
+
+/** A WhatsApp-style reply typed on the simulated phone (1 = SAFE, 2 = NEEDS_HELP). */
+export const sendSimulatorReply = (
+  alertId: string,
+  response: HouseholdResponse,
+): Promise<{ alert: HouseholdAlert; cases: OperatorCase[] }> =>
+  postJson<{ alert: HouseholdAlert; cases: OperatorCase[] }>(`/alerts/${encodeURIComponent(alertId)}/response`, {
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ response, channel: "whatsapp" }),
+  });

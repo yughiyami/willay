@@ -279,3 +279,182 @@ table.reach td.num {
     grid-template-rows: 55vh 1fr;
   }
 }
+
+[hidden] {
+  display: none !important;
+}
+
+/* --- operator panel: households, cases and the phone simulator --- */
+
+#operator input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1c222c;
+  color: var(--panel-fg);
+  border: 1px solid #2a313c;
+  border-radius: 4px;
+  padding: 6px;
+  font: inherit;
+  margin-top: 4px;
+}
+
+.hh-table .hh-row {
+  cursor: pointer;
+}
+
+.hh-table .hh-row:hover,
+.hh-table .hh-row:focus-visible,
+.hh-table .hh-row.selected {
+  background: #1c222c;
+  outline: none;
+}
+
+.hh-table .hh-status {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hh-awaiting .hh-status {
+  color: var(--muted);
+}
+
+.hh-safe .hh-status {
+  color: #5bd08a;
+}
+
+.hh-needs_help .hh-status {
+  color: #ff6b6e;
+}
+
+.hh-no_answer .hh-status {
+  color: #f59e0b;
+}
+
+.case-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0;
+}
+
+.case-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 1px solid #2a313c;
+  border-left-width: 4px;
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-bottom: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.case-row.help {
+  border-left-color: #e5383b;
+}
+
+.case-row.silent {
+  border-left-color: #f59e0b;
+}
+
+.case-row:hover,
+.case-row:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.phone {
+  width: 250px;
+  margin: 8px auto;
+  background: #0b141a;
+  border: 6px solid #2a313c;
+  border-radius: 22px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 330px;
+}
+
+.phone-header {
+  background: #202c33;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.phone-screen {
+  flex: 1;
+  padding: 8px;
+  background: #0b141a;
+  overflow-y: auto;
+  max-height: 260px;
+}
+
+.phone-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bubble {
+  max-width: 92%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.bubble p {
+  margin: 0 0 4px;
+}
+
+.bubble.in {
+  background: #202c33;
+  border-top-left-radius: 0;
+}
+
+.bubble.out {
+  background: #005c4b;
+  margin-left: auto;
+  border-top-right-radius: 0;
+}
+
+.bubble-meta {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.phone-call {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+.phone-buttons {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: #202c33;
+}
+
+.phone-key {
+  flex: 1;
+  background: #111b21;
+  color: var(--panel-fg);
+  border: 1px solid #2a313c;
+  border-radius: 14px;
+  padding: 6px 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.phone-key:hover,
+.phone-key:focus-visible {
+  border-color: #5bd08a;
+  outline: none;
+}

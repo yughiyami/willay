@@ -11,6 +11,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 import { fetchDistricts, fetchFlowPaths, fetchIntakes, fetchPasivos, fetchSiteDetail, fetchSites } from "./api";
 import { initAgentPanel } from "./agentPanel";
+import { type OperatorPanel, initOperatorPanel } from "./operatorPanel";
 import { executeUiActions } from "./uiActions";
 import {
   DISTRICT_LEGENDS,
@@ -28,6 +29,7 @@ import {
   setPathsVisible,
   setReachedVisible,
   setSitesVisible,
+  showHouseholdMarkers,
   showReachedSettlements,
 } from "./layers";
 import { renderDetail, renderDistrict, renderSiteList } from "./panel";
@@ -69,6 +71,7 @@ const districtSelect = document.getElementById("district-metric") as HTMLSelectE
 const legendEl = document.getElementById("district-legend") as HTMLElement;
 
 const districts = new DistrictLayer(viewer);
+let operatorPanel: OperatorPanel | null = null;
 
 async function select(site: Site, sites: Site[], fly = true): Promise<void> {
   renderDetail(detailEl, site, null);
@@ -84,6 +87,7 @@ async function select(site: Site, sites: Site[], fly = true): Promise<void> {
     const detail = await fetchSiteDetail(site.id);
     renderDetail(detailEl, site, detail);
     showReachedSettlements(viewer, detail.exposure?.settlements ?? []);
+    operatorPanel?.setSite(site.id, detail.alert.tier);
   } catch (error) {
     statusEl.textContent = `Could not load detail: ${(error as Error).message}`;
   }
@@ -138,6 +142,13 @@ async function main(): Promise<void> {
     }
     renderSiteList(listEl, data.sites, (site) => void select(site, data.sites));
     await loadOptionalLayers(data.sites);
+
+    operatorPanel = initOperatorPanel({
+      sites: data.sites,
+      onAlerts: (alerts) => showHouseholdMarkers(viewer, alerts),
+      onFocus: (lon, lat) =>
+        viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(lon, lat, 25_000), duration: 1.2 }),
+    });
 
     sitesToggle.addEventListener("change", () => setSitesVisible(viewer, sitesToggle.checked));
     settlementsToggle.addEventListener("change", () => setReachedVisible(viewer, settlementsToggle.checked));

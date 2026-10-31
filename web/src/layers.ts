@@ -13,6 +13,7 @@ import type {
   DistrictCollection,
   DistrictProperties,
   FlowPathCollection,
+  HouseholdAlert,
   IntakeLayer,
   PasivosLayer,
   Site,
@@ -243,5 +244,57 @@ export class DistrictLayer {
 
   get currentMetric(): DistrictMetric {
     return this.metric;
+  }
+}
+
+// --- alert loop: households that need a human ---------------------------------------
+
+export const HOUSEHOLD_PREFIX = "household-";
+
+/**
+ * Highlights the settlements where a synthetic household asked for help (red, large) or could not be reached
+ * (amber). Households that answered SAFE are not drawn. Replaces any previous markers.
+ */
+export function showHouseholdMarkers(viewer: Viewer, alerts: HouseholdAlert[]): void {
+  for (const entity of [...viewer.entities.values]) {
+    if (entity.id.startsWith(HOUSEHOLD_PREFIX)) viewer.entities.remove(entity);
+  }
+  const bySettlement = new Map<string, { lon: number; lat: number; name: string; help: number; silent: number }>();
+  for (const alert of alerts) {
+    if (alert.response !== "NEEDS_HELP" && alert.response !== "NO_ANSWER") continue;
+    const key = `${alert.lon.toFixed(5)},${alert.lat.toFixed(5)}`;
+    const entry = bySettlement.get(key) ?? { lon: alert.lon, lat: alert.lat, name: alert.settlement_name, help: 0, silent: 0 };
+    if (alert.response === "NEEDS_HELP") entry.help += 1;
+    else entry.silent += 1;
+    bySettlement.set(key, entry);
+  }
+  for (const [key, entry] of bySettlement) {
+    const needsHelp = entry.help > 0;
+    const text = needsHelp
+      ? `${entry.name}: ${entry.help} hogar(es) piden ayuda`
+      : `${entry.name}: ${entry.silent} sin respuesta`;
+    viewer.entities.add({
+      id: `${HOUSEHOLD_PREFIX}${key}`,
+      name: text,
+      position: Cartesian3.fromDegrees(entry.lon, entry.lat),
+      point: {
+        pixelSize: needsHelp ? 24 : 15,
+        color: Color.fromCssColorString(needsHelp ? "#e5383b" : "#f59e0b"),
+        outlineColor: Color.WHITE,
+        outlineWidth: needsHelp ? 4 : 2,
+      },
+      label: needsHelp
+        ? {
+            text,
+            font: "13px sans-serif",
+            style: LabelStyle.FILL_AND_OUTLINE,
+            outlineWidth: 3,
+            fillColor: Color.WHITE,
+            outlineColor: Color.fromCssColorString("#7a0c10"),
+            pixelOffset: new Cartesian2(14, -14),
+            showBackground: false,
+          }
+        : undefined,
+    });
   }
 }

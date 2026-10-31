@@ -110,7 +110,7 @@ def _call(calls: CallPort, alert: HouseholdAlert) -> tuple[ResponseKind, str]:
         alert.call_status, alert.call_detail = "error", str(exc)
         return ResponseKind.NO_ANSWER, f"call failed: {exc}"
     alert.call_status, alert.call_detail = "completed", result.detail
-    return result.outcome, result.detail
+    return result.outcome, f"call result: {result.detail}"
 
 
 def dispatch_alerts(
