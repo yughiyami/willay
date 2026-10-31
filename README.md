@@ -14,8 +14,12 @@ Built for the Meta Global AI Developer Hackathon.
 >   message is rejected (the template is used instead) if any required fact is missing.
 > - **EVACUATION needs a human.** Without explicit operator confirmation the result is
 >   `PENDING_CONFIRMATION`, never `EVACUATION`.
-> - **All bundled data is synthetic.** The Rimac-basin fixtures contain invented sites, settlements and
->   values, flagged `synthetic: true` in the data, the API and the UI. They say nothing about real deposits.
+> - **Two data modes.** `WILLAY_DATA_MODE=real` (default) reads open datasets from `WILLAY_DATA_DIR`
+>   (default `../willay-data`, never copied into this repo). `WILLAY_DATA_MODE=synthetic` uses the invented
+>   fixtures in `backend/fixtures` (flagged `synthetic: true`; the test suite uses this mode).
+> - **Real data is sparse and approximate**: tailings risk/status are blank for most sites (flagged
+>   `data_quality`, neutral defaults), water intakes are approximate OpenStreetMap locations, flow paths come
+>   from a 30 m DSM. See `docs/BACKTEST.md` for what the backtest can and cannot show.
 
 ## Alert tiers
 
@@ -39,6 +43,30 @@ ENFEN scale: neutral < weak < moderate < strong < extraordinary. All thresholds 
 - **DownstreamExposure**: settlements snapped to the downstream flow path (tolerance 500 m, haversine, no GIS
   libraries), weighted by `exp(-d / L)` (default L = 10 km), cutoff 50 km; population, households and drinking-water
   intakes raise the impact; impacts combine as a noisy-OR so the result saturates at 1.
+
+## Real-data pipeline
+
+Offline scripts (need numpy, shapely, tifffile from `requirements.txt`) write only to `willay-data/derived/`:
+
+```bash
+.venv/Scripts/python -I scripts/build_flowpaths.py          # D8 paths from the Copernicus DEM (flowpaths.geojson)
+.venv/Scripts/python -I scripts/validate_flowpaths.py       # checks paths against IGN rivers
+.venv/Scripts/python -I scripts/build_site_features.py      # susceptibility sample + distance to river
+.venv/Scripts/python -I scripts/build_district_features.py  # static district features + simplified polygons
+.venv/Scripts/python -I scripts/run_backtest.py             # derived/backtest_results.json
+```
+
+Unknown tailings status/risk map to `unknown` and use documented neutral defaults (0.7 / 0.5) plus a
+`data_quality` flag. ANA population is `Pob_rev` (never the corrupted `Pob`). The CENEPRED 2027 scenario is
+only a comparison baseline.
+
+## Alert languages
+
+Household messages default to neutral professional Spanish (`es`); `en` is kept (operator messages default
+to `en`). Other languages such as Quechua are **never machine-generated**: they need a human-reviewed template
+file `backend/templates/reviewed/<lang>.json` (`WILLAY_REVIEWED_TEMPLATES_DIR` overrides the folder; format in
+`willay/adapters/reviewed_templates.py`). Without it `/alerts/evaluate` returns the tier and
+`message.available: false` with the reason.
 
 ## Backtest metrics
 
@@ -72,7 +100,7 @@ python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt     # Windows
 # source .venv/bin/activate && pip install -r requirements-dev.txt   # macOS/Linux
 
-.venv/Scripts/python -m pytest                                   # run all tests
+.venv/Scripts/python -m pytest                                   # run all tests (synthetic mode)
 
 cd backend
 ../.venv/Scripts/python -m uvicorn willay.api.app:app --reload --port 8000
@@ -83,10 +111,13 @@ Endpoints (interactive docs at `http://localhost:8000/docs`):
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | liveness, `synthetic_data` flag |
-| GET | `/sites` | sites ranked by risk, with factor breakdown |
-| GET | `/sites/{id}` | one site: breakdown, downstream settlements, current tier |
-| POST | `/alerts/evaluate` | hazard inputs (+ `site_id` or `site_static_risk`) to tier, reasons and message |
-| POST | `/backtest` | metrics over the synthetic backtest fixture (`{"top_k_pcts": [10, 20]}` optional) |
+| GET | `/sites?basin_only=&detail=` | basin sites ranked by risk: factor breakdown, `data_quality`, reached settlements/intakes |
+| GET | `/sites/{id}` | one site: breakdown, reached settlements (name, population, distance_km), intakes, flow path GeoJSON, static inputs, current tier |
+| GET | `/flowpaths` | all flow paths (GeoJSON, cumulative distance per vertex) |
+| GET | `/districts` | district GeoJSON: static score, CENEPRED baseline, INDECI emergencies 2017/2023 |
+| GET | `/layers/pasivos`, `/layers/intakes` | MINEM 2011 liabilities (secondary), approximate OSM intakes |
+| POST | `/alerts/evaluate` | hazard inputs (+ `site_id` or `site_static_risk`, optional `language`) to tier, reasons and message |
+| GET/POST | `/backtest?event=2017\|2023` | stored district backtest (synthetic mode: the synthetic fixture) |
 
 Example:
 
@@ -121,5 +152,6 @@ transport only; the test suite never calls the real API.
 
 ## Status
 
-Initial codebase. Replace the synthetic fixtures with real data adapters (ENFEN, SENAMHI, tailings inventory,
-settlements, river network) behind the existing ports; the domain and application layers do not change.
+Real-data adapters for the INGEMMET tailings inventory, ANA settlements, OSM intakes, INDECI, CHIRPS and ENFEN
+timeline are in place behind the existing ports. Not yet connected: live SENAMHI warnings and forecasts,
+real LLM/segmentation calls, SEDAPAL intake locations.

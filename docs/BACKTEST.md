@@ -1,0 +1,124 @@
+# District backtest: Jan-Apr 2017 and Mar 2023
+
+Reproduce (reads `WILLAY_DATA_DIR`, default `../willay-data`; writes only to `derived/`):
+
+```bash
+.venv/Scripts/python -I scripts/build_flowpaths.py
+.venv/Scripts/python -I scripts/build_site_features.py
+.venv/Scripts/python -I scripts/build_district_features.py
+.venv/Scripts/python -I scripts/run_backtest.py     # -> derived/backtest_results.json
+```
+
+Served by `GET /backtest?event=2017|2023` and `POST /backtest?event=...` (the POST recomputes the top-k
+metrics from the stored district table for any `top_k_pcts`).
+
+## Method
+
+**Unit and labels.** The 78 districts of the study bbox. A district is positive if INDECI-SINPAD
+recorded at least one emergency of a rain-driven type (HUAYCO, FLUJO DE DETRITOS, DESLIZAMIENTO,
+INUNDACION, LLUVIA INTENSA) in the window: 1 Jan - 30 Apr 2017 (52 positive, 359 records) or
+1 - 31 Mar 2023 (48 positive, 56 records). DERRUMBE DE CERRO, ALUD, EROSION, fires and quakes are excluded.
+
+**Our static district score** (`domain/district_score.py`). Percentile ranks of four inputs, combined
+with fixed a-priori weights that were not fitted to any label:
+
+| Input | Weight | Source |
+|---|---|---|
+| Share of high and very-high mass-movement susceptibility area | 0.35 | INGEMMET susceptibility (area by district) |
+| Mean slope of land cells | 0.20 | Copernicus GLO-30 |
+| Population in settlements within 500 m of an IGN river or 1 km of an ANA critical point | 0.30 | ANA `Pob_rev`, IGN rivers, ANA critical points |
+| Tailings sites whose D8 flow path crosses the district | 0.15 | INGEMMET inventory + our flow paths |
+
+The CENEPRED scenario is **not** an input. To limit leakage, ANA critical points designated in or after the
+event year are dropped for that event (1 point before 2017, 52 before 2023).
+
+**Baselines, evaluated identically** (same labels, metrics and gate):
+CENEPRED El Nino 2027 district risk (mean of flood and mass-movement risk values; the two components are also
+reported separately) and a population-only baseline (census 2017 population).
+
+**Metrics.** ROC AUC (Mann-Whitney) with a 95% percentile-bootstrap interval (1000 resamples of districts);
+top-k% capture (share of positive districts inside the top k% scored; ties share slots), shown with its
+ceiling (`max` = slots / positives) because with a 60-67% base rate a top-20% list of 16 districts cannot capture
+more than about a third of the positives; precision in the top-k.
+
+**Lead time.** Days from the first PREPARATION-eligible date to the district's first emergency, per positive
+district. Eligibility uses the existing `evaluate_tier` PREPARATION rule day by day with only information
+published up to that day: ENFEN magnitude from the latest communique (curated timeline; first magnitude word
+in the forecast text; neutral while "No activo"), a rainfall condition, and the district's score percentile
+rank in the role of the site static risk (threshold 0.5). Percentile ranks are used for all models so the gate is
+comparable. Districts whose emergency came before eligibility, or that the model did not flag, count under "none".
+
+The existing rule needs ENFEN magnitude >= strong and a seasonal rainfall anomaly forecast of above normal.
+No seasonal outlook exists in the data folder and there is no CHIRPS climatology, so the anomaly is proxied
+by an absolute accumulation (trailing 30-day sum of the CHIRPS sierra mean). The gates, fixed before any result was seen:
+
+| Gate | ENFEN | Rain proxy |
+|---|---|---|
+| `strict_strong_rain80` (rule as written) | >= strong | 30-day >= 80 mm |
+| `weak_enfen_only` | >= weak | none |
+| `weak_rain40` / **`weak_rain80` (primary)** / `weak_rain120` | >= weak | 30-day >= 40 / 80 / 120 mm |
+
+## Results
+
+Base rate 2017: 52/78 = 0.67. Base rate 2023: 48/78 = 0.62.
+
+| Event | Model | AUC [95% CI] | Top-10% | Top-20% | Ceiling 20% |
+|---|---|---|---|---|---|
+| 2017 | **Willay static** | **0.93** [0.86, 0.98] | 0.15 | 0.31 | 0.31 |
+| 2017 | CENEPRED (mean) | 0.77 [0.66, 0.87] | 0.13 | 0.27 | 0.31 |
+| 2017 | CENEPRED mass movement only | 0.91 [0.83, 0.97] | 0.15 | 0.29 | 0.31 |
+| 2017 | CENEPRED flood only | 0.37 [0.26, 0.50] | 0.13 | 0.23 | 0.31 |
+| 2017 | Population only | 0.25 [0.15, 0.37] | 0.12 | 0.19 | 0.31 |
+| 2023 | **Willay static** | **0.63** [0.49, 0.75] | 0.10 | 0.23 | 0.33 |
+| 2023 | CENEPRED (mean) | 0.80 [0.70, 0.89] | 0.17 | 0.31 | 0.33 |
+| 2023 | CENEPRED mass movement only | 0.73 [0.61, 0.84] | 0.13 | 0.29 | 0.33 |
+| 2023 | CENEPRED flood only | 0.63 [0.50, 0.75] | 0.13 | 0.29 | 0.33 |
+| 2023 | Population only | 0.52 [0.40, 0.65] | 0.15 | 0.27 | 0.33 |
+
+Lead time in days (median, p25-p75, n districts with a lead / n without), by gate:
+
+| Event | Gate (first eligible day) | Willay static | CENEPRED | Population |
+|---|---|---|---|---|
+| 2017 | strict (never) | none (0/52) | none | none |
+| 2017 | weak_enfen_only (2017-01-24) | 9 d, 5.8-25.8, n=20 / 32 | 40 d, 8-50, n=25 / 27 | 50 d, 8-51, n=15 / 37 |
+| 2017 | **weak_rain80 (2017-02-13, primary)** | 23.5 d, 17.8-29.3, n=6 / 46 | 30 d, 29-31, n=13 / 39 | 30.5 d, 30-31, n=10 / 42 |
+| 2017 | weak_rain120 (never) | none | none | none |
+| 2023 | strict (never) | none (0/48) | none | none |
+| 2023 | weak (all variants, 2023-03-16) | 6 d, 5.5-10.5, n=3 / 45 | 5 d, 5-5.5, n=3 / 45 | 6 d, n=1 / 47 |
+
+## Reading the numbers honestly
+
+- **2017: our static score separates well (AUC 0.93), clearly above CENEPRED's mean (0.77) and about equal
+  to CENEPRED mass-movement alone (0.91; intervals overlap).** It is partly an echo of INGEMMET susceptibility,
+  which both rely on. Top-20% capture equals the attainable ceiling for ours; every model is close to it.
+- **2023: we are weaker (AUC 0.63, interval touches 0.5) and CENEPRED is better (0.80).** One event could be luck in
+  either direction; we do not claim the 2017 result generalises. A population-only list has no skill in 2017
+  (AUC below 0.5: dense desert-coast districts did not have huaycos) and about none in 2023.
+- **The PREPARATION rule as written (ENFEN >= strong) would not have fired in either event**: ENFEN forecast
+  weak to moderate in 2017 and weak (strong only from May) in 2023. Any lead time exists only under the relaxed
+  gates, which are our assumption, not an official rule. Rain thresholds are not calibrated.
+- **Lead time is mostly short or absent.** In 2023 the ENFEN alert (16 Mar) came after the peak emergencies (14-15 Mar):
+  only 3 of 48 districts have any lead, at 5-6 days. In 2017 the alert (24 Jan / 2 Feb) preceded the March peak
+  by weeks, but many districts had their first emergency in January-February, before eligibility; a gate that waits for
+  80 mm shortens the lead further. ENFEN status is a coarse, basin-wide, months-scale trigger.
+- Top-k capture is bounded by the high base rate; precision and AUC are more informative here.
+- Only two events and 78 districts: intervals are wide and metric differences below about 0.1 AUC are not distinguishable.
+
+## Limitations
+
+1. **CHIRPS (5 km) underestimates local peaks**: the 14-17 Mar 2017 Chosica huaycos show only 3-5 mm basin mean.
+   It acts as a seasonal/antecedent wetness proxy, not a trigger. The 2023 series starts on 1 Feb.
+2. **No event-dated landslide inventory with coordinates.** INGEMMET inventory `FECHA` is a survey date, so
+   labels are district-day INDECI records only; the backtest cannot say where inside a district or which tailings
+   site failed. It evaluates district susceptibility to the event, not tailings failure.
+3. **INDECI labels are district-day reports** (report date, not event date; preliminary figures; no coordinates).
+   A district with a large urban area can be positive from a small local event. Records exist only to 2023.
+4. **Possible leakage in INGEMMET susceptibility**: the national model was built with historical inventories that
+   probably include the 2017 events; the 2017 AUC may be optimistic. Slope and susceptibility are correlated.
+   ANA critical points are filtered by designation year, but their designation reflects earlier events.
+5. **CENEPRED is a 2027 scenario** (SENAMHI IT N 07-2026), not a hindcast of 2017 or 2023: it is a comparison
+   baseline for "an existing district risk product", not a like-for-like competitor.
+6. Population exposure uses ANA settlement points; metropolitan Lima appears as large aggregated points, so
+   "near a river" is crude there. Households are not published.
+7. Weights and the 0.5 rank threshold are a-priori choices; sensitivity to them was not explored beyond the gate table.
+8. Flow paths come from a 30 m DSM (bridges and buildings can bend them); the `tailings upstream` input depends on them.
