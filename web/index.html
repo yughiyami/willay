@@ -13,6 +13,22 @@
         <p class="tagline">El Nino early warning for tailings sites</p>
         <p id="banner" class="banner" hidden></p>
         <p id="status" class="muted">Loading sites...</p>
+        <fieldset class="controls">
+          <legend>Map layers</legend>
+          <label><input type="checkbox" id="toggle-paths" checked /> Downstream flow paths</label>
+          <label><input type="checkbox" id="toggle-intakes" checked /> Water intakes (approximate)</label>
+          <label class="select-row">
+            District choropleth
+            <select id="district-metric">
+              <option value="off">Off</option>
+              <option value="static">Static score (ours)</option>
+              <option value="cenepred">CENEPRED baseline</option>
+              <option value="emergency2017">Emergencies Jan-Apr 2017</option>
+              <option value="emergency2023">Emergencies Mar 2023</option>
+            </select>
+          </label>
+          <p id="district-legend" class="muted legend"></p>
+        </fieldset>
         <ul id="site-list"></ul>
         <section id="detail" hidden></section>
         <p class="honesty">
