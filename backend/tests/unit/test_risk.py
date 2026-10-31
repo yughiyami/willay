@@ -12,6 +12,8 @@ from willay.domain.entities import (
     TailingsSite,
 )
 from willay.domain.risk import (
+    NEUTRAL_DECLARED_RISK_FACTOR,
+    NEUTRAL_STATUS_FACTOR,
     RiskConfig,
     compute_risk_score,
     declared_risk_factor,
@@ -72,7 +74,7 @@ def test_abandoned_is_worst_status():
 
 
 def test_declared_risk_factor_is_ordered_and_bounded():
-    values = [declared_risk_factor(r) for r in RiskLevel]
+    values = [declared_risk_factor(r) for r in RiskLevel if r is not RiskLevel.UNKNOWN]
     assert values == sorted(values)
     assert values[-1] == 1.0
     assert values[0] > 0.0
@@ -207,3 +209,25 @@ def test_static_risk_floors_missing_exposure_with_epsilon():
 
     value = compute_static_risk(susceptibility=0.5, vulnerability=0.5, exposure=None, config=RiskConfig(epsilon=0.1))
     assert value == pytest.approx(0.5 * 0.5 * 0.1)
+
+
+# --- unknown categorical attributes use documented neutral defaults ---------
+
+
+def test_unknown_declared_risk_is_neutral_between_low_and_very_high():
+    unknown = declared_risk_factor(RiskLevel.UNKNOWN)
+    assert unknown == NEUTRAL_DECLARED_RISK_FACTOR
+    assert declared_risk_factor(RiskLevel.LOW) < unknown < declared_risk_factor(RiskLevel.VERY_HIGH)
+
+
+def test_unknown_status_is_neutral_between_active_and_abandoned():
+    unknown = status_factor(SiteStatus.UNKNOWN)
+    assert unknown == NEUTRAL_STATUS_FACTOR
+    assert status_factor(SiteStatus.ACTIVE) < unknown < status_factor(SiteStatus.ABANDONED)
+
+
+def test_site_with_unknown_attributes_is_less_vulnerable_than_a_confirmed_worst_case():
+    cfg = RiskConfig()
+    worst = make_site(status=SiteStatus.ABANDONED, declared_risk=RiskLevel.VERY_HIGH)
+    unknown = make_site(status=SiteStatus.UNKNOWN, declared_risk=RiskLevel.UNKNOWN)
+    assert tailings_vulnerability(unknown, cfg) < tailings_vulnerability(worst, cfg)

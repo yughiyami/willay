@@ -1,8 +1,11 @@
+from datetime import date
+
 import pytest
 
 from willay.domain.entities import (
     AlertTier,
     EnfenMagnitude,
+    Emergency,
     FlowPath,
     PathPoint,
     RainfallAnomaly,
@@ -11,6 +14,7 @@ from willay.domain.entities import (
     Settlement,
     SiteStatus,
     TailingsSite,
+    WaterIntake,
 )
 
 
@@ -89,3 +93,32 @@ def test_site_rejects_susceptibility_out_of_range():
 
 def test_rainfall_anomaly_members():
     assert {a.value for a in RainfallAnomaly} == {"below_normal", "normal", "above_normal"}
+
+
+def test_site_defaults_have_no_data_quality_flags_and_are_in_basin():
+    site = TailingsSite(
+        id="t",
+        name="x",
+        lon=-76.0,
+        lat=-11.0,
+        volume_m3=1000.0,
+        status=SiteStatus.UNKNOWN,
+        declared_risk=RiskLevel.UNKNOWN,
+        distance_to_river_m=100.0,
+        susceptibility=0.5,
+    )
+    assert site.data_quality == ()
+    assert site.in_basin is True
+    assert site.area_m2 is None
+
+
+def test_water_intake_is_flagged_approximate_by_default():
+    intake = WaterIntake(id="i", name="Bocatoma", lon=-76.9, lat=-12.0)
+    assert intake.approximate is True
+
+
+def test_emergency_requires_a_valid_ubigeo():
+    with pytest.raises(ValueError):
+        Emergency(ubigeo="15", district="X", date=date(2017, 3, 15), hazard="HUAYCO")
+    ok = Emergency(ubigeo="150118", district="X", date=date(2017, 3, 15), hazard="HUAYCO")
+    assert ok.ubigeo == "150118"
