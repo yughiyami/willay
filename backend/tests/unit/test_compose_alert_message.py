@@ -281,7 +281,7 @@ def test_spanish_household_message_is_short_and_has_four_plain_lines(tier):
     text = compose_alert_message(make_input(tier), language="es").text
     situation, action, safe_point, source = text.split("\n")
     assert len(text) <= 330
-    assert situation.count(".") == 1 and "SYNTHETIC Tailings Alpha" in situation and "7.5 km" in situation
+    assert situation.endswith(".") and ". " not in situation and "SYNTHETIC Tailings Alpha" in situation and "7.5 km" in situation
     assert sum(action.count(mark) for mark in ".!?") <= 1  # one short action sentence
     assert safe_point.startswith("Punto seguro:") and "Plaza Mayor" in safe_point
     assert source.startswith("Fuente:") and "SENAMHI Aviso 123/2026" in source

@@ -6,6 +6,9 @@ only if every required fact survives; otherwise the template text is used unchan
 Languages: Spanish (default for household messages) and English are built in. Any other language
 (for example Quechua) needs a human-reviewed template supplied through `templates`; text in those
 languages is never machine-generated and never passed through the LLM.
+
+Spanish household messages are written for low literacy: the situation, ONE short action, the safe point
+and the official source, in four short lines with no tier codes.
 """
 
 from __future__ import annotations
@@ -13,7 +16,9 @@ from __future__ import annotations
 import string
 from dataclasses import dataclass
 
+from willay.application.safe_point_text import NO_SAFE_POINT, describe_proposed_safe_point
 from willay.domain.entities import AlertTier
+from willay.domain.safe_point import SafePoint
 from willay.ports.llm import LLMPort
 from willay.ports.templates import ReviewedTemplatesPort, TemplateNotAvailable
 
@@ -23,7 +28,7 @@ BUILTIN_LANGUAGES = ("es", "en")
 
 DISCLAIMER = {
     "en": "This alert complements the official SENAMHI, INDECI and ENFEN alerts and does not replace them.",
-    "es": "Esta alerta complementa las alertas oficiales de SENAMHI, INDECI y ENFEN y no las reemplaza.",
+    "es": "Complementa las alertas oficiales de SENAMHI, INDECI y ENFEN; no las reemplaza.",
 }
 _OFFICIAL_BODIES = ("SENAMHI", "INDECI", "ENFEN")
 
@@ -36,20 +41,12 @@ _ACTION = {
             "Evacuation conditions detected. Operator action required: confirm or dismiss the evacuation alert."
         ),
     },
+    # One short sentence each (low literacy).
     "es": {
-        AlertTier.PREPARATION: (
-            "Las condiciones favorecen lluvias intensas en las próximas semanas. "
-            "Revise su ruta de evacuación y su mochila de emergencia."
-        ),
-        AlertTier.ATTENTION: (
-            "Es posible que ocurran lluvias intensas en las próximas 24 a 72 horas. "
-            "Siga los boletines oficiales y manténgase listo para desplazarse."
-        ),
-        AlertTier.EVACUATION: "EVACÚE AHORA hacia el punto seguro. No cruce el río ni sus riberas.",
-        AlertTier.PENDING_CONFIRMATION: (
-            "Se detectaron condiciones de evacuación. Se requiere la acción del operador: "
-            "confirme o descarte la alerta de evacuación."
-        ),
+        AlertTier.PREPARATION: "Prepárese: revise su ruta de evacuación y su mochila de emergencia.",
+        AlertTier.ATTENTION: "Pueden venir lluvias fuertes en 1 a 3 días: esté listo para salir.",
+        AlertTier.EVACUATION: "¡EVACÚE AHORA al punto seguro, sin cruzar el río!",
+        AlertTier.PENDING_CONFIRMATION: "Posible evacuación: el operador debe confirmar o descartar la alerta.",
     },
 }
 
@@ -58,13 +55,13 @@ _LABELS = {
         "distance": "Distance from the site",
         "safe_point": "Safe point",
         "source": "Official source",
-        "no_safe_point": "not defined for this location (contact local civil defense)",
+        "no_safe_point": NO_SAFE_POINT["en"],
     },
     "es": {
         "distance": "Distancia desde el relave",
         "safe_point": "Punto seguro",
         "source": "Fuente oficial",
-        "no_safe_point": "no definido para esta ubicación (comuníquese con Defensa Civil local)",
+        "no_safe_point": NO_SAFE_POINT["es"],
     },
 }
 
@@ -78,6 +75,8 @@ class AlertMessageInput:
     distance_km: float
     safe_point: str | None
     official_source: str
+    # Computed from the DEM when no curated safe point exists. Always shown with its validation label.
+    proposed_safe_point: SafePoint | None = None
 
 
 @dataclass(frozen=True)
@@ -94,22 +93,40 @@ def action_text(tier: AlertTier, language: str) -> str:
     return _ACTION[language][tier]
 
 
+def _safe_point_text(data: AlertMessageInput, language: str) -> str | None:
+    """The safe point wording, or None when there is neither a curated nor a proposed point."""
+    if data.safe_point:
+        return data.safe_point
+    if data.proposed_safe_point is not None:
+        return describe_proposed_safe_point(data.proposed_safe_point, language)
+    return None
+
+
 def _template(data: AlertMessageInput, language: str) -> str:
+    safe_point = _safe_point_text(data, language)
+    if language == "es":
+        safe_line = f"Punto seguro: {safe_point}." if safe_point else f"{NO_SAFE_POINT['es']}."
+        return "\n".join(
+            (
+                f"Relave {data.site_name}, a {data.distance_km:.1f} km de su comunidad.",
+                _ACTION["es"][data.tier],
+                safe_line,
+                f"Fuente: {data.official_source}. {DISCLAIMER['es']}",
+            )
+        )
     labels = _LABELS[language]
-    safe_point = data.safe_point or labels["no_safe_point"]
     return (
         f"[{data.tier.value}] {data.site_name}: {_ACTION[language][data.tier]} "
         f"{labels['distance']}: {data.distance_km:.1f} km. "
-        f"{labels['safe_point']}: {safe_point}. "
+        f"{labels['safe_point']}: {safe_point or labels['no_safe_point']}. "
         f"{labels['source']}: {data.official_source}. "
         f"{DISCLAIMER[language]}"
     )
 
 
-def _required_facts(data: AlertMessageInput) -> list[str]:
+def _required_facts(data: AlertMessageInput, language: str) -> list[str]:
     facts = [data.site_name, f"{data.distance_km:.1f}", data.official_source, *_OFFICIAL_BODIES]
-    if data.safe_point:
-        facts.append(data.safe_point)
+    facts.append(_safe_point_text(data, language) or _LABELS[language]["no_safe_point"])
     return facts
 
 
@@ -134,7 +151,7 @@ def _from_reviewed_template(
         tier=data.tier.value,
         site_name=data.site_name,
         distance_km=f"{data.distance_km:.1f}",
-        safe_point=data.safe_point or _LABELS["es"]["no_safe_point"],
+        safe_point=_safe_point_text(data, "es") or _LABELS["es"]["no_safe_point"],
         official_source=data.official_source,
         disclaimer=DISCLAIMER["es"],
     )
@@ -165,6 +182,6 @@ def compose_alert_message(
             candidate = llm.rephrase(text, language)
         except Exception:  # any LLM failure must fall back to the deterministic template
             candidate = None
-        if candidate and all(fact in candidate for fact in _required_facts(data)):
+        if candidate and all(fact in candidate for fact in _required_facts(data, language)):
             return AlertMessage(tier=data.tier, text=candidate, audience=audience, rephrased=True, language=language)
     return AlertMessage(tier=data.tier, text=text, audience=audience, rephrased=False, language=language)
