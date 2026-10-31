@@ -89,6 +89,11 @@ class AlertMessage:
     language: str = "en"
 
 
+def action_text(tier: AlertTier, language: str) -> str:
+    """The pre-approved action sentence of a tier in a built-in language."""
+    return _ACTION[language][tier]
+
+
 def _template(data: AlertMessageInput, language: str) -> str:
     labels = _LABELS[language]
     safe_point = data.safe_point or labels["no_safe_point"]

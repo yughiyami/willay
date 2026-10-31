@@ -48,8 +48,9 @@ INSTRUCTIONS = (
     "convey (tier, site, distance, safe point, official source). Score clarity and faithfulness from 1 to 5, say whether "
     "the wording is plain enough for low-literacy readers, and list concrete issues (in English, short). Faithful means "
     "every fact is present exactly and nothing is added, changed or contradicted, including the statement that the alert "
-    "complements the official SENAMHI, INDECI and ENFEN alerts. You only evaluate wording: never suggest a different "
-    "alert level."
+    "complements the official SENAMHI, INDECI and ENFEN alerts. The tier's standard action sentence (approved_standard_text) "
+    "and that disclaimer are pre-approved wording: do not count them as additions, judge them only for clarity. You only "
+    "evaluate wording: never suggest a different alert level."
 )
 
 
@@ -66,6 +67,7 @@ class JudgeItem:
     distance_km: float
     safe_point: str | None
     official_source: str
+    approved_text: str | None = None  # the tier's fixed action sentence (pre-approved template wording)
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,7 @@ def judge_messages(items: list[JudgeItem], extractor: StructuredExtractionPort, 
                 "distance_km": round(i.distance_km, 1),
                 "safe_point": i.safe_point,
                 "official_source": i.official_source,
+                "approved_standard_text": i.approved_text,
             },
         }
         for i in items

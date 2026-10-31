@@ -73,6 +73,7 @@ class AppDependencies:
     image_generator: ImagePort | None = None
     extractor: StructuredExtractionPort | None = None
     derived_dir: Path | None = None
+    hazard_notes: Sequence[str] = ()
 
 
 def reviewed_templates_from_env(environ: Mapping[str, str] | None = None) -> FileReviewedTemplates:
@@ -220,8 +221,12 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
     if ingested is not None:
         anomaly = ingested
     hazard, source = _current_hazard(bulletins, anomaly)
+    hazard_notes: tuple[str, ...] = ()
     if ingested is not None:
-        source += f"; seasonal rainfall outlook verified against the communique text ({anomaly.value})"
+        hazard_notes = (
+            f"seasonal rainfall outlook '{anomaly.value}' read from the ENFEN communique by a language model and "
+            "verified against the document text (scripts/ingest_enfen.py)",
+        )
 
     results_path = data.derived("backtest_results.json")
     backtest_results = json.loads(results_path.read_text(encoding="utf-8")) if results_path.exists() else None
@@ -251,6 +256,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         backtest_results=backtest_results,
         reviewed_templates=reviewed_templates_from_env(env),
         derived_dir=data.derived(),
+        hazard_notes=hazard_notes,
     )
 
 

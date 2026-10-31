@@ -156,6 +156,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             "disclaimer": deps.disclaimer,
             "official_source": deps.official_source,
             "hazard_context": _hazard_to_dict(deps.hazard_scenario),
+            "hazard_notes": list(deps.hazard_notes),
             "sites": [r.to_dict(include_exposure_detail=detail) for r in ranked_sites(basin_only)],
         }
 

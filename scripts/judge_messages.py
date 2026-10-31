@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from willay.adapters.data_dir import DataDir, resolve_data_dir  # noqa: E402
 from willay.api.dependencies import real_dependencies  # noqa: E402
-from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message  # noqa: E402
+from willay.application.compose_alert_message import AlertMessageInput, action_text, compose_alert_message  # noqa: E402
 from willay.application.judge_messages import JudgeItem, judge_messages  # noqa: E402
 from willay.application.rank_sites import rank_sites  # noqa: E402
 from willay.domain.entities import AlertTier  # noqa: E402
@@ -51,7 +51,10 @@ def build_items(count: int = 10) -> list[JudgeItem]:
         )
         message = compose_alert_message(data, llm=None, language="es")
         items.append(
-            JudgeItem(f"m{len(items) + 1}", tier, message.text, data.site_name, data.distance_km, data.safe_point, data.official_source)
+            JudgeItem(
+                f"m{len(items) + 1}", tier, message.text, data.site_name, data.distance_km, data.safe_point,
+                data.official_source, approved_text=action_text(tier, "es"),
+            )
         )
         if len(items) == count:
             break
@@ -76,6 +79,9 @@ def main() -> None:
     result = report.to_dict()
     result["messages"] = [{"id": i.id, "tier": i.tier.value, "text": i.text} for i in items]
     out = data.derived("message_judgements.json")
+    previous = out.with_name("message_judgements_run1_facts_only_prompt.json")
+    if out.exists() and not previous.exists():
+        out.rename(previous)  # keep the first run (judge saw only the facts, so it called the fixed action text "additions")
     out.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     print(json.dumps(result["summary"], indent=2))
     print(f"wrote {out}")
