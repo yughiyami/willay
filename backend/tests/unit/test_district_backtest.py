@@ -6,11 +6,14 @@ from willay.application.district_backtest import (
     BacktestEvent,
     DistrictRow,
     PreparationGate,
+    ScenarioBaseline,
+    build_model_scores,
     enfen_magnitude_on,
     first_preparation_dates,
     run_district_backtest,
     trailing_rain_mm,
 )
+from willay.domain.district_score import DistrictFeatures
 from willay.domain.entities import DailyRain, EnfenAlertStatus, EnfenBulletin, EnfenMagnitude
 
 
@@ -209,3 +212,37 @@ def test_district_table_lists_scores_labels_and_dates():
     assert first["scores"]["willay_static"] == 0.9
     other = next(d for d in result["districts"] if d["ubigeo"] == "5")
     assert other["emergency"] is False and other["first_emergency"] is None
+
+
+# --- model scores -----------------------------------------------------------------
+
+
+def test_model_scores_cover_our_score_the_cenepred_baselines_and_population():
+    features = [
+        DistrictFeatures("1", "A", 0.9, 30.0, 5000, 3),
+        DistrictFeatures("2", "B", 0.1, 5.0, 0, 0),
+    ]
+    baselines = [
+        ScenarioBaseline("1", "A", population=1000, flood_value=2.0, mm_value=4.0),
+        ScenarioBaseline("2", "B", population=9000, flood_value=None, mm_value=1.0),
+    ]
+    models = build_model_scores(features, baselines)
+    assert set(models) == {
+        "willay_static",
+        "cenepred_baseline",
+        "cenepred_mm_only",
+        "cenepred_flood_only",
+        "population_baseline",
+    }
+    assert models["willay_static"]["1"] > models["willay_static"]["2"]
+    assert models["cenepred_baseline"] == {"1": 3.0, "2": 1.0}  # mean of the available values
+    assert models["cenepred_mm_only"] == {"1": 4.0, "2": 1.0}
+    assert models["cenepred_flood_only"] == {"1": 2.0}
+    assert models["population_baseline"] == {"1": 1000.0, "2": 9000.0}
+
+
+def test_our_score_is_independent_of_the_scenario_baseline():
+    features = [DistrictFeatures("1", "A", 0.9, 30.0, 5000, 3), DistrictFeatures("2", "B", 0.1, 5.0, 0, 0)]
+    low = [ScenarioBaseline("1", "A", 1, 0.0, 0.0), ScenarioBaseline("2", "B", 1, 0.0, 0.0)]
+    high = [ScenarioBaseline("1", "A", 99, 5.0, 5.0), ScenarioBaseline("2", "B", 99, 5.0, 5.0)]
+    assert build_model_scores(features, low)["willay_static"] == build_model_scores(features, high)["willay_static"]
