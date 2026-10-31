@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
-from willay.domain.entities import FlowPath, Settlement
+from willay.domain.entities import FlowPath, Settlement, WaterIntake
 from willay.domain.geo import haversine_m, project_point_on_segment
 
 
@@ -18,6 +18,9 @@ class ExposureConfig:
     reference_population: float = 10_000.0
     water_intake_bonus: float = 0.3
     household_size: float = 4.0
+    # Impact of a reached drinking-water intake (before distance decay). Intake coordinates from
+    # open sources are approximate, so this is deliberately below 1.
+    intake_impact: float = 0.5
 
     def __post_init__(self) -> None:
         if self.snap_tolerance_m < 0:
@@ -28,6 +31,8 @@ class ExposureConfig:
             raise ValueError("cutoff_m must be > 0")
         if self.reference_population <= 0:
             raise ValueError("reference_population must be > 0")
+        if not 0.0 <= self.intake_impact <= 1.0:
+            raise ValueError("intake_impact must be within [0, 1]")
 
 
 @dataclass(frozen=True)
@@ -47,6 +52,7 @@ class SettlementExposure:
             "settlement_id": self.settlement_id,
             "settlement_name": self.settlement_name,
             "along_path_km": self.along_path_m / 1000.0,
+            "distance_km": self.along_path_m / 1000.0,
             "snap_distance_m": self.snap_distance_m,
             "weight": self.weight,
             "impact": self.impact,
@@ -57,16 +63,43 @@ class SettlementExposure:
 
 
 @dataclass(frozen=True)
+class IntakeExposure:
+    intake_id: str
+    intake_name: str
+    along_path_m: float
+    snap_distance_m: float
+    impact: float
+    approximate: bool
+    operator: str = ""
+    lon: float = 0.0
+    lat: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "intake_id": self.intake_id,
+            "name": self.intake_name,
+            "operator": self.operator,
+            "lon": self.lon,
+            "lat": self.lat,
+            "distance_km": self.along_path_m / 1000.0,
+            "snap_distance_m": self.snap_distance_m,
+            "impact": self.impact,
+            "approximate": self.approximate,
+        }
+
+
+@dataclass(frozen=True)
 class ExposureResult:
     value: float
     contributions: tuple[SettlementExposure, ...]
+    intakes: tuple[IntakeExposure, ...] = ()
 
     @property
     def nearest(self) -> SettlementExposure | None:
         return self.contributions[0] if self.contributions else None
 
 
-def _snap_to_path(path: FlowPath, settlement: Settlement) -> tuple[float, float]:
+def _snap_to_path(path: FlowPath, settlement: Settlement | WaterIntake) -> tuple[float, float]:
     """Return (along_path_m, snap_distance_m) of the closest point on the path."""
     best_snap = math.inf
     best_along = 0.0
@@ -90,13 +123,17 @@ def _magnitude(settlement: Settlement, cfg: ExposureConfig) -> float:
 
 
 def downstream_exposure(
-    path: FlowPath, settlements: Iterable[Settlement] | Sequence[Settlement], config: ExposureConfig | None = None
+    path: FlowPath,
+    settlements: Iterable[Settlement] | Sequence[Settlement],
+    config: ExposureConfig | None = None,
+    intakes: Iterable[WaterIntake] = (),
 ) -> ExposureResult:
     """Exposure in [0, 1] of settlements along the downstream flow path.
 
     Each settlement within `snap_tolerance_m` of the path and within `cutoff_m` along it
     contributes impact = exp(-d / L) * magnitude(population, households, water intake).
-    Impacts combine as a noisy-OR so the aggregate saturates at 1.
+    Drinking-water intakes snapped to the path the same way contribute
+    exp(-d / L) * intake_impact. Impacts combine as a noisy-OR so the aggregate saturates at 1.
     """
     cfg = config or ExposureConfig()
     contributions: list[SettlementExposure] = []
@@ -119,7 +156,26 @@ def downstream_exposure(
             )
         )
     contributions.sort(key=lambda c: c.along_path_m)
+    reached: list[IntakeExposure] = []
+    for intake in intakes:
+        along, snap = _snap_to_path(path, intake)
+        if snap > cfg.snap_tolerance_m or along > cfg.cutoff_m:
+            continue
+        reached.append(
+            IntakeExposure(
+                intake_id=intake.id,
+                intake_name=intake.name,
+                along_path_m=along,
+                snap_distance_m=snap,
+                impact=math.exp(-along / cfg.decay_length_m) * cfg.intake_impact,
+                approximate=intake.approximate,
+                operator=intake.operator,
+                lon=intake.lon,
+                lat=intake.lat,
+            )
+        )
+    reached.sort(key=lambda i: i.along_path_m)
     survival = 1.0
-    for c in contributions:
-        survival *= 1.0 - min(1.0, c.impact)
-    return ExposureResult(value=1.0 - survival, contributions=tuple(contributions))
+    for impact in [c.impact for c in contributions] + [i.impact for i in reached]:
+        survival *= 1.0 - min(1.0, impact)
+    return ExposureResult(value=1.0 - survival, contributions=tuple(contributions), intakes=tuple(reached))
