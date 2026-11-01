@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import faulthandler
 import io
 import json
 import os
@@ -54,6 +55,7 @@ def main() -> None:
         sys.exit("this script spends credits: pass --live and --yes-synthetic-only")
 
     os.environ["WILLAY_META_ENABLED"] = "1"
+    faulthandler.dump_traceback_later(args.timeout + 60, exit=True)  # a hang dumps every thread's stack and exits
     from fastapi.testclient import TestClient
 
     from willay.adapters.meta_model_api import load_adapter_from_env
@@ -104,7 +106,8 @@ def main() -> None:
             break
         time.sleep(1.0)
     else:
-        sys.exit("timed out")
+        print("timed out waiting for the demo", flush=True)
+        os._exit(1)
 
     spent = usage.total_cost() - start_total
     print(f"\nstatus: {trace['status']}  trace cost ${trace['totals']['cost_usd']:.4f}  usage-log delta ${spent:.4f}")
@@ -132,7 +135,8 @@ def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "orchestrator_recording.json").write_text(json.dumps(recording, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     (OUT_DIR / "live_trace.json").write_text(json.dumps(trace, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"wrote {OUT_DIR / 'orchestrator_recording.json'} and live_trace.json")
+    print(f"wrote {OUT_DIR / 'orchestrator_recording.json'} and live_trace.json", flush=True)
+    os._exit(0)  # the test client keeps worker threads alive; everything is written
 
 
 if __name__ == "__main__":
