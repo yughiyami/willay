@@ -422,26 +422,44 @@ class MetaModelApiAdapter:
         if len(video) > INLINE_MEDIA_LIMIT_BYTES:
             raise MetaApiError("clip is too large to send inline; upload it with the Files API")
         data_url = f"data:{content_type};base64,{base64.b64encode(video).decode()}"
+        # Worst case for the budget check: 15 s at 30 fps.
+        return self._run_segmentation(
+            "video", {"type": "input_video", "video_url": data_url}, prompt, purpose, sam_cost(frames=450)
+        )
+
+    def segment_image(
+        self, image: bytes, prompt: str, purpose: str = "segment_image", content_type: str = "image/jpeg"
+    ) -> VideoSegmentation:
+        """Segment one concept ("water", "staff gauge") in a still picture with sam-3.1 ($2.50 per 1,000 images).
+
+        The result has the same shape as a one-frame clip (frame index 0), so the mask helpers are shared.
+        """
+        if len(image) > INLINE_MEDIA_LIMIT_BYTES:
+            raise MetaApiError("image is too large to send inline")
+        data_url = f"data:{content_type};base64,{base64.b64encode(image).decode()}"
+        return self._run_segmentation(
+            "image", {"type": "input_image", "image_url": data_url}, prompt, purpose, sam_cost(images=1)
+        )
+
+    def _run_segmentation(
+        self, media: str, media_part: dict, prompt: str, purpose: str, estimated_cost: float
+    ) -> VideoSegmentation:
         body = {
             "model": MODEL_SEGMENTATION,
             "input": [
                 {
                     "type": "message",
                     "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": prompt},
-                        {"type": "input_video", "video_url": data_url},
-                    ],
+                    "content": [{"type": "input_text", "text": prompt}, media_part],
                 }
             ],
             "stream": True,
             "metadata": {"mask_encoding": "one_bit", "include_confidence": "true"},
         }
-        # Worst case for the budget check: 15 s at 30 fps.
         deltas: list[str] = []
         usage: Mapping = {}
         completed = False
-        for event in self._sse_events("/responses", body, sam_cost(frames=450)):
+        for event in self._sse_events("/responses", body, estimated_cost):
             kind = event.get("type")
             if kind == "response.output_text.delta":
                 deltas.append(str(event.get("delta", "")))
@@ -454,6 +472,15 @@ class MetaModelApiAdapter:
                 raise MetaApiError(self._redact(f"segmentation failed: {message or 'unknown error'}"))
         if not completed:
             raise MetaApiError("segmentation stream ended before response.completed")
+        if media == "image":
+            self._log(
+                model=MODEL_SEGMENTATION,
+                endpoint="/responses",
+                purpose=purpose,
+                images=1,
+                est_cost_usd=sam_cost(images=1),
+            )
+            return _parse_segmentation(prompt, deltas, None, media="image")
         billed = usage.get("video_frames_processed")
         self._log(
             model=MODEL_SEGMENTATION,
@@ -465,10 +492,13 @@ class MetaModelApiAdapter:
         return _parse_segmentation(prompt, deltas, int(billed) if billed is not None else None)
 
 
-def _parse_segmentation(prompt: str, deltas: Sequence[str], billed_frames: int | None) -> VideoSegmentation:
-    from meta_sam_parser import CompletedOutcome, decode_mask_to_raster, video_segmentation_format
+def _parse_segmentation(
+    prompt: str, deltas: Sequence[str], billed_frames: int | None, media: str = "video"
+) -> VideoSegmentation:
+    from meta_sam_parser import CompletedOutcome, decode_mask_to_raster, image_segmentation_format, video_segmentation_format
 
-    parser = video_segmentation_format().create_parser()
+    fmt = image_segmentation_format() if media == "image" else video_segmentation_format()
+    parser = fmt.create_parser()
     text = ""
     for delta in deltas:
         if _FRAME_LINE.match(delta) and text and not text.endswith("\n"):
@@ -484,9 +514,9 @@ def _parse_segmentation(prompt: str, deltas: Sequence[str], billed_frames: int |
     masks: dict[tuple[int, str], object] = {}
     order: list[tuple[int, str]] = []
     for record in result.records:
-        if record.frame is None:
+        if record.frame is None and media != "image":
             continue
-        key = (record.frame.frame_index, record.object_id)
+        key = (record.frame.frame_index if record.frame is not None else 0, record.object_id)
         if record.kind == "box":
             boxes[key] = record
             if key not in order:

@@ -478,3 +478,51 @@ def test_a_retried_call_is_logged_and_billed_once(tmp_path):
     adapter, _ = adapter_with_script([503, 200], [], usage_log=log)
     adapter.run_turn(instructions="x", input_items=[], tools=[])
     assert len((tmp_path / "usage.jsonl").read_text().strip().splitlines()) == 1
+
+
+# --- SAM 3.1 still images -------------------------------------------------------------------------------
+
+
+def test_segment_image_sends_one_concept_prompt_and_the_picture_as_input_image():
+    adapter, seen = make_adapter(lambda r: httpx.Response(200, content=sam_stream(SAM_LINE_0, frames=None)))
+    adapter.segment_image(b"fake-jpeg", "staff gauge", purpose="unit")
+    body = json.loads(seen[0].content)
+    assert str(seen[0].url) == f"{BASE}/responses"
+    assert body["model"] == "sam-3.1" and body["stream"] is True
+    text_part, image_part = body["input"][0]["content"]
+    assert text_part == {"type": "input_text", "text": "staff gauge"}
+    assert image_part["type"] == "input_image"
+    assert image_part["image_url"] == "data:image/jpeg;base64," + base64.b64encode(b"fake-jpeg").decode()
+    assert body["metadata"]["mask_encoding"] == "one_bit"
+
+
+def test_segment_image_parses_objects_into_a_single_frame():
+    adapter, _ = make_adapter(lambda r: httpx.Response(200, content=sam_stream(SAM_LINE_0, frames=None)))
+    seg = adapter.segment_image(b"x", "button")
+    assert (seg.width, seg.height) == (320, 334)
+    (frame,) = seg.frames
+    assert frame.frame_index == 0 and len(frame.objects) == 2
+    assert frame.objects[0].mask.count() == 1539
+
+
+def test_segment_image_zero_matches_is_a_normal_result():
+    adapter, _ = make_adapter(lambda r: httpx.Response(200, content=sam_stream(frames=None)))
+    assert adapter.segment_image(b"x", "unicorn").frames == ()
+
+
+def test_segment_image_is_logged_as_one_image_at_the_image_price(tmp_path):
+    log = UsageLog(tmp_path / "u.jsonl")
+    adapter, _ = make_adapter(lambda r: httpx.Response(200, content=sam_stream(SAM_LINE_0, frames=None)), usage_log=log)
+    adapter.segment_image(b"x", "water", purpose="gauge_validation")
+    entry = json.loads((tmp_path / "u.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert entry["model"] == "sam-3.1" and entry["images"] == 1 and "frames" not in entry
+    assert entry["est_cost_usd"] == pytest.approx(0.0025)
+    assert entry["purpose"] == "gauge_validation"
+
+
+def test_segment_image_respects_the_budget_guard(tmp_path):
+    log = UsageLog(tmp_path / "u.jsonl", budget_usd=0.001)
+    adapter, seen = make_adapter(lambda r: httpx.Response(200, content=sam_stream(frames=None)), usage_log=log)
+    with pytest.raises(BudgetExceededError):
+        adapter.segment_image(b"x", "water")
+    assert seen == []
