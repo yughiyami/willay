@@ -317,3 +317,44 @@ def test_card_without_an_image_model_is_reported_not_raised():
     )
     result, _ = run(orchestrator, scenario=ATTENTION_SCENARIO)
     assert "card" not in result.artifacts_info
+
+
+# --- session memory of returned tiers and empty model answers ----------------------------------------------------------------
+
+
+def test_tiers_returned_in_an_earlier_stage_of_the_same_session_may_be_cited_later():
+    from willay.adapters.traced_models import TracedAgentModel
+    from willay.application.orchestration.orchestrator import Orchestrator
+    from willay.application.orchestration.runtime import OrchestratorConfig
+    from willay.application.orchestration.trace import TraceStore, use_trace
+    from tests.unit.orchestration_fixtures import ScriptedByModel
+
+    fake = ScriptedByModel(
+        {
+            WONDER: [
+                turn("", call("evaluate_alert", site_id="syn-002"), model=WONDER),
+                turn("Nivel ATTENTION.", model=WONDER),
+                turn("Antes estaba en ATTENTION y no cambio.", model=WONDER),
+            ]
+        }
+    )
+    orchestrator = Orchestrator(TracedAgentModel(fake), build_services(), OrchestratorConfig())
+    trace = TraceStore().create()
+    with use_trace(trace):
+        first = orchestrator.run("uno", trace, scenario=ATTENTION_SCENARIO)
+        second = orchestrator.run("dos", trace, scenario=ATTENTION_SCENARIO)
+    assert first.answer_es == "Nivel ATTENTION."
+    assert second.answer_es == "Antes estaba en ATTENTION y no cambio."  # not replaced: a tool returned ATTENTION earlier
+
+
+def test_an_empty_model_answer_after_tool_calls_is_reported_honestly():
+    orchestrator, _, _ = build_orchestrator(
+        {
+            WONDER: [turn("", call("ask_dispatcher", task="p", site_id="syn-002"), model=WONDER), turn("Revisa la propuesta.", model=WONDER)],
+            SPARK: [turn("", call("prepare_dispatch", site_id="syn-002")), turn("")],
+        }
+    )
+    result, trace = run(orchestrator, scenario=ATTENTION_SCENARIO)
+    ask = [e for e in trace.snapshot()["events"] if e["kind"] == "agent_end" and e["agent"] == "dispatcher"][0]
+    assert "prepare_dispatch" in ask["result_summary"] or ask["result_summary"]
+    assert result.proposals  # the tool result is not lost because the model said nothing

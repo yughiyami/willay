@@ -420,3 +420,61 @@ def test_run_turn_defaults_to_the_text_model():
     adapter, seen = make_adapter(lambda r: httpx.Response(200, json=text_response("ok")))
     turn = adapter.run_turn(instructions="x", input_items=[], tools=[])
     assert json.loads(seen[0].content)["model"] == MODEL_TEXT and turn.model == MODEL_TEXT
+
+
+# --- transient failures ---------------------------------------------------------------------------------------------
+
+
+def adapter_with_script(statuses, sleeps, usage_log=None):
+    """Answers with the scripted HTTP statuses in order; the last one repeats."""
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        status = statuses[min(len(calls) - 1, len(statuses) - 1)]
+        if status == 200:
+            return httpx.Response(200, json=text_response("ok"))
+        if status == "stale":
+            return httpx.Response(400, json={"error": {"message": "referenced response not found or expired"}})
+        return httpx.Response(status, json={"error": {"message": "persistence service error"}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    adapter = MetaModelApiAdapter(MetaModelApiConfig(api_key=KEY, base_url=BASE), client, usage_log=usage_log, sleep=sleeps.append)
+    return adapter, calls
+
+
+def test_responses_retry_transient_server_errors_with_backoff():
+    sleeps = []
+    adapter, calls = adapter_with_script([503, 429, 200], sleeps)
+    assert adapter.run_turn(instructions="x", input_items=[], tools=[]).text == "ok"
+    assert len(calls) == 3 and len(sleeps) == 2 and sleeps[1] > sleeps[0] > 0
+
+
+def test_a_just_created_response_that_is_not_found_yet_is_retried():
+    sleeps = []
+    adapter, calls = adapter_with_script(["stale", 200], sleeps)
+    turn = adapter.run_turn(instructions="x", input_items=[], tools=[], previous_response_id="resp_9")
+    assert turn.text == "ok" and len(calls) == 2
+
+
+def test_other_client_errors_are_not_retried():
+    sleeps = []
+    adapter, calls = adapter_with_script([401], sleeps)
+    with pytest.raises(MetaApiError):
+        adapter.run_turn(instructions="x", input_items=[], tools=[])
+    assert len(calls) == 1 and sleeps == []
+
+
+def test_retries_are_bounded_and_the_last_error_is_raised():
+    sleeps = []
+    adapter, calls = adapter_with_script([503], sleeps)
+    with pytest.raises(MetaApiError) as error:
+        adapter.run_turn(instructions="x", input_items=[], tools=[])
+    assert len(calls) == 3 and error.value.status_code == 503
+
+
+def test_a_retried_call_is_logged_and_billed_once(tmp_path):
+    log = UsageLog(tmp_path / "usage.jsonl", budget_usd=1.0)
+    adapter, _ = adapter_with_script([503, 200], [], usage_log=log)
+    adapter.run_turn(instructions="x", input_items=[], tools=[])
+    assert len((tmp_path / "usage.jsonl").read_text().strip().splitlines()) == 1
