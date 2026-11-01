@@ -25,6 +25,12 @@ def test_replay_returns_the_recorded_turns_in_order_with_the_site_substituted():
     assert second.text == "Listo."
 
 
+def test_replay_swaps_the_site_placeholder_in_texts_too():
+    recording = {"calls": [{"agent": "planner", "model": "m", "text": "El relave $SITE_ID esta en PREPARATION.", "tool_calls": []}]}
+    turn = ReplayAgentModel(recording, site_id="ingemmet-1015", pace_s=0.0).run_turn(instructions="i", input_items=[], tools=[], purpose="planner")
+    assert turn.text == "El relave ingemmet-1015 esta en PREPARATION."
+
+
 def test_replay_refuses_a_run_that_diverged_from_the_recording():
     replay = ReplayAgentModel(RECORDING, site_id="s", pace_s=0.0)
     with pytest.raises(ReplayMismatch):

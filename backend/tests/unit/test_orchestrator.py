@@ -279,6 +279,22 @@ def test_communicator_writes_the_household_message_for_the_tier_the_domain_retur
     assert message["tier"] == "ATTENTION" and message["language"] == "es" and "SENAMHI" in message["text"]
 
 
+def test_the_communicator_may_cite_the_draft_tier_its_tool_returned():
+    from dataclasses import replace
+
+    scenario = replace(RAIN_SCENARIO, water_rise_cm=45.0)  # the rules return PENDING_CONFIRMATION; the message is an EVACUATION draft
+    orchestrator, _, _ = build_orchestrator(
+        {
+            WONDER: [turn("", call("ask_communicator", task="mensaje", site_id="syn-002"), model=WONDER), turn("Borrador listo.", model=WONDER)],
+            SPARK: [turn("", call("compose_message", site_id="syn-002")), turn("Borrador del mensaje EVACUATION, pendiente de confirmacion.")],
+        }
+    )
+    result, trace = run(orchestrator, scenario=scenario)
+    assert "tier_claim_removed" not in result.flags
+    assert result.artifacts_info["message"]["draft_pending_confirmation"] is True
+    assert "guardrail" not in [e["kind"] for e in trace.snapshot()["events"]]
+
+
 def test_quechua_is_never_machine_generated():
     orchestrator, _, _ = build_orchestrator(
         {

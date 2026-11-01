@@ -647,6 +647,7 @@ class Orchestrator:
             )
         except TemplateNotAvailable as unavailable:
             return {"available": False, "language": unavailable.language, "reason": str(unavailable)}, []
+        state.tiers_returned.add(message.tier.value)  # a tool returned this tier (a draft when pending confirmation)
         info = {"available": True, "tier": message.tier.value, "language": message.language, "text": message.text, "draft_pending_confirmation": draft, "rephrased": message.rephrased}
         state.artifacts_info["message"] = info
         return info, []
@@ -670,6 +671,7 @@ class Orchestrator:
             ),
             self._s.image,
         )
+        state.tiers_returned.add(tier.value)
         state.trace.add_artifact("card.png", "image/png", card.image)
         info = {"review_required": card.review_required, "intended_text": card.intended_text, "artifact": "card.png", "tier": tier.value, "draft_pending_confirmation": draft}
         state.artifacts_info["card"] = info

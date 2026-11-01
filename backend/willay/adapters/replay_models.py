@@ -73,7 +73,7 @@ class ReplayAgentModel:
         )
         return AgentTurn(
             response_id=f"replay-{number}",
-            text=str(recorded.get("text", "")),
+            text=_swap(str(recorded.get("text", "")), SITE_PLACEHOLDER, self._site_id),
             tool_calls=calls,
             model=str(recorded.get("model", model or "")),
             input_tokens=int(recorded.get("input_tokens", 0)),
