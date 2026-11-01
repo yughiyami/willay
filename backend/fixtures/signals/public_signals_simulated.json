@@ -1,0 +1,13 @@
+{
+  "synthetic": true,
+  "note": "SIMULATED public signals for Demo mode. Every report, link and time here is invented; the links point to example.org and lead nowhere. Times are hours before 'now' so the set always falls inside the 72-hour window. Places and UBIGEOs are real names of the Rimac basin so the layer lands in the right districts.",
+  "signals": [
+    {"event_type": "huaico", "place": "CHOSICA", "ubigeo": "150118", "district": "LURIGANCHO", "lon": -76.693, "lat": -11.934, "hours_ago": 4, "confidence": 0.84, "source_url": "https://example.org/simulado/huaico-chosica-1", "level": "settlement"},
+    {"event_type": "desborde", "place": "CHOSICA", "ubigeo": "150118", "district": "LURIGANCHO", "lon": -76.693, "lat": -11.934, "hours_ago": 19, "confidence": 0.72, "source_url": "https://example.org/simulado/desborde-chosica-2", "level": "settlement"},
+    {"event_type": "inundacion", "place": "CHACLACAYO", "ubigeo": "150107", "district": "CHACLACAYO", "lon": -76.770, "lat": -11.975, "hours_ago": 11, "confidence": 0.66, "source_url": "https://example.org/simulado/inundacion-chaclacayo-3", "level": "district"},
+    {"event_type": "deslizamiento", "place": "SAN MATEO", "ubigeo": "150722", "district": "SAN MATEO", "lon": -76.302, "lat": -11.763, "hours_ago": 27, "confidence": 0.78, "source_url": "https://example.org/simulado/deslizamiento-san-mateo-4", "level": "district"},
+    {"event_type": "deslizamiento", "place": "SAN MATEO", "ubigeo": "150722", "district": "SAN MATEO", "lon": -76.302, "lat": -11.763, "hours_ago": 49, "confidence": 0.61, "source_url": "https://example.org/simulado/deslizamiento-san-mateo-5", "level": "district"},
+    {"event_type": "relave", "place": "MATUCANA", "ubigeo": "150701", "district": "MATUCANA", "lon": -76.380, "lat": -11.846, "hours_ago": 14, "confidence": 0.55, "source_url": "https://example.org/simulado/relave-matucana-6", "level": "district"},
+    {"event_type": "huaico", "place": "RICARDO PALMA", "ubigeo": "150714", "district": "RICARDO PALMA", "lon": -76.575, "lat": -11.917, "hours_ago": 36, "confidence": 0.9, "source_url": "https://example.org/simulado/huaico-ricardo-palma-7", "level": "district"}
+  ]
+}
