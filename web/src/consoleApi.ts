@@ -4,6 +4,7 @@ import type {
   BacktestResponse,
   DemoStatus,
   EnfenBulletin,
+  GaugeValidation,
   Health,
   LearnedModelInfo,
   ProposalInfo,
@@ -72,6 +73,7 @@ export function analyseClip(file: File, markerCm: number, registerClip: boolean)
 
 export const fetchBacktest = (): Promise<BacktestResponse> => getJson("/backtest");
 export const fetchLearnedModel = (): Promise<LearnedModelInfo> => getJson("/learned-model");
+export const fetchGaugeValidation = (): Promise<GaugeValidation> => getJson("/validation/gauge");
 export const fetchEnfen = (): Promise<{ source: string; bulletins: EnfenBulletin[] }> => getJson("/enfen/timeline");
 
 export interface CardReply {

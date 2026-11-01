@@ -1,4 +1,4 @@
-import { fetchBacktest, fetchEnfen, fetchLearnedModel } from "./consoleApi";
+import { fetchBacktest, fetchEnfen, fetchGaugeValidation, fetchLearnedModel } from "./consoleApi";
 import type { BacktestEvent, Ci, EnfenBulletin, LearnedModelInfo } from "./consoleTypes";
 import { dataQualityLabel } from "./labels";
 import { el } from "./panel";
@@ -143,7 +143,7 @@ function qualityBlock(sites: Site[]): HTMLElement {
 
 export async function loadEvidence(container: HTMLElement, sites: Site[]): Promise<void> {
   container.replaceChildren(el("p", "muted", "Cargando evidencia…"));
-  const [backtest, learned, enfen] = await Promise.allSettled([fetchBacktest(), fetchLearnedModel(), fetchEnfen()]);
+  const [backtest, learned, enfen, gauge] = await Promise.allSettled([fetchBacktest(), fetchLearnedModel(), fetchEnfen(), fetchGaugeValidation()]);
   const learnedInfo = learned.status === "fulfilled" ? learned.value : null;
   const parts: HTMLElement[] = [];
 
@@ -185,6 +185,19 @@ export async function loadEvidence(container: HTMLElement, sites: Site[]): Promi
     parts.push(el("p", "muted", "Sin aprendizaje profundo: 78 distritos y 4 variables no dan para más; el fallo es un cambio de régimen de los datos, no de capacidad del modelo (docs/BACKTEST.md)."));
   } else {
     parts.push(el("p", "muted", "Sin modelo aprendido en este modo de datos (scripts/train_risk_model.py)."));
+  }
+
+  if (gauge.status === "fulfilled") {
+    const m = gauge.value.summary;
+    parts.push(
+      el("h3", undefined, "Medidor de escala (conjunto público)"),
+      el(
+        "p",
+        "muted",
+        `SAM 3.1 sobre una regla graduada, calibrada con el 20 % y evaluada en ${m.n_test} imágenes retenidas: error absoluto medio ${m.mae_cm.toFixed(1)} cm (promedio constante: ${m.baseline_mae_cm.toFixed(1)} cm), ${m.within_10cm_pct.toFixed(0)} % dentro de 10 cm (${m.baseline_within_10cm_pct.toFixed(0)} %), cobertura ${m.coverage_pct.toFixed(0)} %.`,
+      ),
+      el("p", "banner", gauge.value.caveat),
+    );
   }
 
   parts.push(el("h3", undefined, "Comunicados del ENFEN"));

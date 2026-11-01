@@ -98,6 +98,7 @@ class AppDependencies:
     district_collection: Mapping | None = None
     backtest_results: Mapping | None = None
     learned_model: Mapping | None = None
+    gauge_validation: Mapping | None = None
     reviewed_templates: object | None = None
     # Live Meta capabilities. None means "not configured": the matching endpoints answer 503.
     video_segmenter: VideoSegmentationPort | None = None
@@ -219,6 +220,16 @@ def _verified_enfen_ingest(data: DataDir, bulletins) -> RainfallAnomaly | None:
 
 def _learned_model(data: DataDir) -> Mapping | None:
     path = data.derived("learned_model.json")
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def _gauge_validation(data: DataDir) -> Mapping | None:
+    path = data.derived("sam_gauge_validation", "results.json")
     if not path.exists():
         return None
     try:
@@ -376,6 +387,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         pasivos=world.pasivos,
         district_collection=_district_collection(world, data, learned),
         learned_model=learned,
+        gauge_validation=_gauge_validation(data),
         rain_context=_rain_context(data),
         enfen_bulletins=tuple(bulletins),
         backtest_results=backtest_results,

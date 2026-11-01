@@ -190,3 +190,19 @@ export interface SignalsSnapshot {
   last_refresh: { queries: number; results_seen: number; events_extracted: number; signals_kept: number; dropped_unmatched: number; errors: string[] } | null;
   districts: SignalDistrict[];
 }
+
+/** Held-out validation of the SAM 3.1 staff-gauge method on a public dataset (GET /validation/gauge). */
+export interface GaugeValidation {
+  dataset: string;
+  summary: {
+    n_test: number;
+    coverage_pct: number;
+    mae_cm: number;
+    rmse_cm: number;
+    bias_cm: number;
+    within_10cm_pct: number;
+    baseline_mae_cm: number;
+    baseline_within_10cm_pct: number;
+  };
+  caveat: string;
+}

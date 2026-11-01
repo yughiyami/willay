@@ -269,6 +269,17 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="no learned model (run scripts/train_risk_model.py)")
         return {k: v for k, v in deps.learned_model.items() if k != "districts"}
 
+    @app.get("/validation/gauge")
+    def gauge_validation() -> dict:
+        """Held-out validation of the SAM 3.1 staff-gauge method on a public dataset (docs/WATCHER_PROTOCOL.md)."""
+        if deps.gauge_validation is None:
+            raise HTTPException(status_code=404, detail="no gauge validation results (derived/sam_gauge_validation/results.json)")
+        return {
+            **deps.gauge_validation,
+            "caveat": "One site in South China (a lake, not a river), one fixed camera, 40 days: each new site needs its own calibration; "
+            "this is not evidence of accuracy on Peruvian rivers.",
+        }
+
     @app.post("/alerts/evaluate")
     def evaluate_alert(request: EvaluateAlertIn) -> dict:
         ranked = find_ranked(request.site_id) if request.site_id is not None else None
