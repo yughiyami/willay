@@ -28,7 +28,7 @@ def make_adapter(handler, **kwargs):
         return handler(request)
 
     client = httpx.Client(transport=httpx.MockTransport(recording))
-    adapter = TavilySearchAdapter(TavilyConfig(api_key=KEY), client, sleep=lambda s: None, **kwargs)
+    adapter = TavilySearchAdapter(TavilyConfig(api_key=KEY), client, sleep=lambda s: None, clock=lambda: NOW, **kwargs)
     return adapter, seen
 
 
