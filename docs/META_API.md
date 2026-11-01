@@ -93,6 +93,10 @@ models.** Even so, never send personal data: only public official documents, syn
   $0.012). SAM returned a water match on 32 of 60 frames of that flat-coloured fake scene, which shows nothing about real water
   (see `docs/WATCHER_PROTOCOL.md`).
 
+- **Still images** (`MetaModelApiAdapter.segment_image`, `input_image` data URL, same streamed `<0f>` records, **$2.50 per 1,000 images**, logged as `images`).
+  Live on 750 camera frames (2026-10-31, see `docs/WATCHER_PROTOCOL.md`): `staff gauge` returned nothing, `measuring ruler` found a red/white staff
+  gauge in about a quarter of 1920 px frames (and in 97% of fixed crops at native resolution), and `water` segmented a concrete wall as often as the lake.
+
 ## Multi-agent orchestration: what the live smoke showed (2026-10-31)
 
 One recorded run (`backend/fixtures/demo/live_trace.json`, about US$0.15) exercised the planner and four specialists end to end.
