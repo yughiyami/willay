@@ -15,6 +15,7 @@ from willay.api.alert_routes import register_alert_routes
 from willay.api.card_routes import register_card_routes
 from willay.api.demo_routes import register_demo_routes
 from willay.api.orchestration_routes import register_orchestration_routes
+from willay.api.signals_routes import register_signals_routes
 from willay.api.telephony_routes import register_telephony_routes
 from willay.api.watch_routes import register_watch_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
@@ -22,9 +23,11 @@ from willay.application.safe_point_text import PROPOSED_LABEL
 from willay.ports.templates import TemplateNotAvailable
 from willay.application.district_backtest import recompute_top_k
 from willay.application.evaluate_alert_tier import evaluate_alert_tier
+from willay.application.public_signals import signal_count_for_site
 from willay.application.rank_sites import RankedSite, rank_sites
 from willay.application.run_backtest import run_backtest
 from willay.domain.entities import AlertTier, HazardContext
+from willay.domain.signals import corroborate
 from willay.domain.tiers import TierEvaluation
 
 LOCAL_WEB_ORIGINS = [
@@ -275,6 +278,10 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             static_risk = ranked.static_risk
         config = request.thresholds.to_config() if request.thresholds else None
         evaluation = evaluate_alert_tier(request.to_context(), static_risk, config)
+        if ranked is not None:
+            # Unverified public signals may add a reason to an ATTENTION result. They never change the tier.
+            count = signal_count_for_site(deps.signals, ranked, list(deps.repository.list_settlements()))
+            evaluation = corroborate(evaluation, count)
         body = _evaluation_to_dict(evaluation)
         body["site_static_risk"] = static_risk
         body["message"] = compose_for(ranked, evaluation.tier, request.language) if ranked is not None else None
@@ -311,6 +318,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
     register_agent_routes(app, deps, lambda: ranked_sites())
     register_orchestration_routes(app, deps, lambda: ranked_sites(), find_ranked)
     register_telephony_routes(app, deps)
+    register_signals_routes(app, deps)
     register_demo_routes(app, deps, lambda: ranked_sites(), find_ranked)
 
     return app

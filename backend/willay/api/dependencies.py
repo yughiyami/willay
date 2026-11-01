@@ -33,8 +33,10 @@ from willay.adapters.twilio_calls import MissingTwilioConfigError, TwilioCallAda
 from willay.adapters.web_whatsapp import WebWhatsAppSimulator
 from willay.adapters.safe_points_file import FILE_NAME as SAFE_POINTS_FILE
 from willay.adapters.safe_points_file import load_proposed_safe_points
+from willay.adapters.signals_fixture import load_simulated_signals
 from willay.adapters.reviewed_templates import FileReviewedTemplates
 from willay.application.district_backtest import STANDARD_EVENTS
+from willay.application.public_signals import DEFAULT_MAX_QUERIES, PublicSignalsHub
 from willay.application.orchestration.runtime import (
     DEFAULT_FALLBACK_MODEL,
     DEFAULT_PLANNER_MODEL,
@@ -57,6 +59,7 @@ from willay.ports.image import ImagePort, TranscriptionPort
 from willay.ports.llm import LLMPort
 from willay.ports.messaging import MessagingPort
 from willay.ports.segmentation import VideoSegmentationPort
+from willay.ports.signals import PublicSearchPort
 from willay.ports.site_repository import SiteRepositoryPort
 
 ENV_MODE = "WILLAY_DATA_MODE"
@@ -65,6 +68,10 @@ ENV_TEMPLATES_DIR = "WILLAY_REVIEWED_TEMPLATES_DIR"
 ENV_META_ENABLED = "WILLAY_META_ENABLED"
 ENV_CALLS_ENABLED = "WILLAY_CALLS_ENABLED"
 ENV_CALLS_PROVIDER = "WILLAY_CALLS_PROVIDER"  # simulated | asterisk (default when enabled) | twilio
+ENV_SIGNALS_ENABLED = "WILLAY_SIGNALS_ENABLED"  # public signals (Tavily search + model extraction); off by default
+ENV_SIGNALS_MAX_QUERIES = "WILLAY_SIGNALS_MAX_QUERIES"
+ENV_SIGNALS_COOLDOWN_S = "WILLAY_SIGNALS_COOLDOWN_S"
+DEFAULT_SIGNALS_COOLDOWN_S = 300.0
 DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "reviewed"
 REAL_DISCLAIMER = (
     "Real open data (INGEMMET, ANA, OSM, Copernicus DEM). Tailings risk attributes are sparse, water intakes are "
@@ -118,6 +125,11 @@ class AppDependencies:
     demo_recording: Mapping | None = None  # recorded orchestrator turns for the offline demo (scripts/record_demo.py)
     demo_pace_s: float = 0.6  # pause between replayed model turns so the audience can follow the trace
     demo_confirm_timeout_s: float = 900.0  # how long the demo waits for the operator's click
+    # Public signals: unverified news/web reports, context only. Off unless WILLAY_SIGNALS_ENABLED=1 (see docs/SIGNALS.md).
+    signals: PublicSignalsHub = field(default_factory=lambda: PublicSignalsHub(simulated_loader=lambda now: load_simulated_signals(now=now)))
+    signal_search: PublicSearchPort | None = None
+    signals_max_queries: int = DEFAULT_MAX_QUERIES
+    signals_cooldown_s: float = DEFAULT_SIGNALS_COOLDOWN_S
 
 
 def orchestrator_config_from_env(environ: Mapping[str, str] | None = None) -> OrchestratorConfig:
@@ -441,6 +453,54 @@ def attach_calls_from_env(deps: AppDependencies, environ: Mapping[str, str] | No
     return deps
 
 
+def _load_dotenv() -> None:
+    """Load the repo-root `.env` into the process environment (never printed), like the Meta adapter does."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # python-dotenv is optional here
+        return
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
+
+
+def attach_signals_from_env(deps: AppDependencies, environ: Mapping[str, str] | None = None) -> AppDependencies:
+    """Live public signals, only when WILLAY_SIGNALS_ENABLED=1, TAVILY_API_KEY is set AND the extraction model is wired.
+
+    A key alone never enables anything, and a missing piece leaves the app running with signals off and a note naming the
+    missing variable (never a value). The simulated Demo set stays available while signals are off.
+    """
+    env = os.environ if environ is None else environ
+    if env.get(ENV_SIGNALS_ENABLED, "0").strip() != "1":
+        return deps
+    if environ is None:
+        _load_dotenv()
+    from willay.adapters.tavily_search import MissingTavilyKeyError, TavilySearchAdapter  # local import: optional at start-up
+
+    try:
+        search = TavilySearchAdapter.from_env(env)
+    except MissingTavilyKeyError:
+        deps.signals.note = "WILLAY_SIGNALS_ENABLED=1 but TAVILY_API_KEY is not set"
+        return deps
+    if deps.extractor is None:
+        deps.signals.note = "the extraction model is not wired: set WILLAY_META_ENABLED=1 and META_API_KEY"
+        return deps
+
+    def positive(name: str, default: float, integer: bool = False) -> float:
+        try:
+            value = float(env[name]) if env.get(name) else default
+        except ValueError:
+            return default
+        return value if value >= 0 and (not integer or value >= 1) else default
+
+    deps.signal_search = search
+    deps.signals_max_queries = int(positive(ENV_SIGNALS_MAX_QUERIES, DEFAULT_MAX_QUERIES, integer=True))
+    deps.signals_cooldown_s = positive(ENV_SIGNALS_COOLDOWN_S, DEFAULT_SIGNALS_COOLDOWN_S)
+    deps.signals.enabled = True
+    deps.signals.note = "live: Tavily search and Muse Spark extraction; refresh with POST /signals/refresh"
+    return deps
+
+
 DEMO_RECORDING_FILE = Path(__file__).resolve().parents[2] / "fixtures" / "demo" / "orchestrator_recording.json"
 
 
@@ -467,9 +527,9 @@ def _with_demo(deps: AppDependencies, environ: Mapping[str, str] | None = None) 
 def default_dependencies() -> AppDependencies:
     mode = os.environ.get(ENV_MODE, "real").strip().lower()
     if mode == "synthetic":
-        return _with_demo(attach_calls_from_env(attach_meta_from_env(synthetic_dependencies())))
+        return _with_demo(attach_calls_from_env(attach_signals_from_env(attach_meta_from_env(synthetic_dependencies()))))
     if mode == "real":
-        return _with_demo(attach_calls_from_env(attach_meta_from_env(real_dependencies())))
+        return _with_demo(attach_calls_from_env(attach_signals_from_env(attach_meta_from_env(real_dependencies()))))
     raise ValueError(f"{ENV_MODE} must be 'real' or 'synthetic', got '{mode}'")
 
 
@@ -477,6 +537,7 @@ __all__ = [
     "AppDependencies",
     "attach_calls_from_env",
     "attach_meta_from_env",
+    "attach_signals_from_env",
     "default_dependencies",
     "load_demo_recording",
     "orchestrator_config_from_env",

@@ -152,6 +152,7 @@ def build_services(
         learned_model=deps.learned_model,
         rain_context=deps.rain_context,
         tier_config=deps.tier_config,
+        signals=deps.signals,
         budget_remaining=budget_remaining,
         clip_probe=lambda data, suffix: probe_clip(data, suffix).frames,
         overlay_renderer=render_overlays,

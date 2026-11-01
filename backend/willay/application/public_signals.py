@@ -364,6 +364,9 @@ class PublicSignalsHub:
 
     # --- state ----------------------------------------------------------------------------------------------------
 
+    def now(self) -> datetime:
+        return self._clock()
+
     @property
     def mode(self) -> str:
         if self.enabled:
