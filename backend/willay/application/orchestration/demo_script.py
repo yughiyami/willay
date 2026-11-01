@@ -62,7 +62,7 @@ STAGES: Sequence[DemoStage] = (
         lambda site_id, name: (
             "El ENFEN declaró un Niño costero de magnitud extraordinaria y se pronostican lluvias sobre lo normal. "
             f"Pide al analista de peligro el ranking de relaves y el nivel de alerta del primero (site_id: {site_id}). "
-            "Explica en pocas frases qué relaves requieren PREPARACIÓN."
+            "Explica en pocas frases qué relaves requieren PREPARACIÓN y cita solo los niveles que devuelva evaluate_alert."
         ),
     ),
     DemoStage(
@@ -71,7 +71,7 @@ STAGES: Sequence[DemoStage] = (
         AFTER_SENAMHI,
         lambda site_id, name: (
             "SENAMHI emitió un aviso naranja y se pronostican 75 mm de lluvia en las próximas 72 horas. "
-            f"Pide al analista de peligro el nivel de alerta actual del relave {site_id} y qué cambió respecto a la etapa anterior."
+            f"Pide al analista de peligro el nivel de alerta actual del relave {site_id} y qué condiciones lo explican."
         ),
     ),
     DemoStage(

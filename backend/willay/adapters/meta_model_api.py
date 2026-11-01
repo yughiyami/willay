@@ -17,9 +17,10 @@ import io
 import json
 import os
 import re
+import time
 import wave
 from dataclasses import dataclass, field
-from typing import Iterator, Mapping, Sequence
+from typing import Callable, Iterator, Mapping, Sequence
 
 import httpx
 
@@ -34,6 +35,10 @@ MODEL_TRANSCRIBE = "muse-voice-transcribe-1.0"
 MODEL_SEGMENTATION = "sam-3.1"
 MODEL_IMAGE = "muse-image-1.0"
 MODEL_JUDGE = "muse-wonder-1.0"
+
+_RETRY_STATUSES = (429, 500, 502, 503, 504)
+_RETRY_BACKOFF_S = 1.0
+_RESPONSES_RETRIES = 2
 
 ASR_MAX_SECONDS = 600
 ASR_RATES = (16000, 24000)
@@ -121,7 +126,9 @@ class MetaModelApiAdapter:
         client: httpx.Client | None = None,
         usage_log: UsageLog | None = None,
         text_model: str = MODEL_TEXT,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        self._sleep = sleep
         self._config = config
         self._client = client or httpx.Client(timeout=httpx.Timeout(180.0, connect=15.0))
         self._usage = usage_log
@@ -162,14 +169,28 @@ class MetaModelApiAdapter:
         if self._usage is not None:
             self._usage.record(**fields)
 
-    def _post(self, path: str, *, estimated_cost: float = 0.0, **kwargs) -> dict:
+    @staticmethod
+    def _is_transient(response: httpx.Response) -> bool:
+        """Rate limits and server errors, plus a response id that was created a moment ago and is not visible yet."""
+        if response.status_code in _RETRY_STATUSES:
+            return True
+        return response.status_code == 400 and "referenced response not found" in response.text.lower()
+
+    def _post(self, path: str, *, estimated_cost: float = 0.0, retries: int = 0, **kwargs) -> dict:
         self._guard(estimated_cost)
         headers = self._headers(kwargs.pop("headers", None))
-        try:
-            response = self._client.post(f"{self._config.base_url}{path}", headers=headers, **kwargs)
-        except httpx.HTTPError as exc:
-            raise MetaApiError(self._redact(f"request to {path} failed: {type(exc).__name__}")) from exc
-        if response.status_code >= 400:
+        attempt = 0
+        while True:
+            try:
+                response = self._client.post(f"{self._config.base_url}{path}", headers=headers, **kwargs)
+            except httpx.HTTPError as exc:
+                raise MetaApiError(self._redact(f"request to {path} failed: {type(exc).__name__}")) from exc
+            if response.status_code < 400:
+                break
+            if attempt < retries and self._is_transient(response):
+                attempt += 1
+                self._sleep(_RETRY_BACKOFF_S * attempt)  # 1 s, then 2 s: exponential enough for two retries
+                continue
             raise self._http_error(path, response)
         try:
             payload = response.json()
@@ -214,7 +235,7 @@ class MetaModelApiAdapter:
 
     def _responses(self, body: dict, purpose: str) -> dict:
         model = body["model"]
-        payload = self._post("/responses", json=body, estimated_cost=self._estimate_text_cost(model, body))
+        payload = self._post("/responses", json=body, estimated_cost=self._estimate_text_cost(model, body), retries=_RESPONSES_RETRIES)
         usage = payload.get("usage") or {}
         input_tokens = int(usage.get("input_tokens", 0))
         output_tokens = int(usage.get("output_tokens", 0))

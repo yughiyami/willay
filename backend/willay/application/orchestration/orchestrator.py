@@ -248,11 +248,14 @@ class Orchestrator:
         self._model = model
         self._s = services
         self._cfg = config or OrchestratorConfig()
+        # Tiers a tool returned earlier in this session (for example in the previous stage of the demo) may be cited later.
+        self._session_tiers: set[str] = set()
 
     # --- entry point -------------------------------------------------------------------------------------------
 
     def run(self, text: str, trace: RunTrace, scenario: HazardContext | None = None, clip_id: str | None = None) -> RunResult:
         state = RunState(trace=trace, hazard=replace(scenario or self._s.hazard, operator_confirmed=False), clip_id=clip_id)
+        state.tiers_returned |= self._session_tiers
         with use_trace(trace):
             trace.emit(
                 "run_start",
@@ -274,6 +277,7 @@ class Orchestrator:
         if guard_flags:
             state.flags.extend(guard_flags)
             trace.emit("guardrail", agent=PLANNER, result_summary="tier_claim_removed: a tier code no tool returned was in the answer")
+        self._session_tiers |= state.tiers_returned
         return RunResult(
             answer_es=answer,
             ui_actions=tuple(state.ui_actions),
@@ -348,7 +352,12 @@ class Orchestrator:
                 items, previous = outputs, turn.response_id
             text = (turn.text or "").strip() if turn else ""
             if not text:
-                text = "No pude completar la consulta con las herramientas disponibles."
+                done = ", ".join(dict.fromkeys(g["tool"] for g in gathered))
+                text = (
+                    f"Herramientas ejecutadas: {done}. El modelo no devolvió un comentario final; revise los resultados en el registro."
+                    if gathered
+                    else "No pude completar la consulta con las herramientas disponibles."
+                )
             state.trace.emit("agent_end", result_summary=f"{len(text)} chars")
         return text
 

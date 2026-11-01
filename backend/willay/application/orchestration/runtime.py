@@ -36,8 +36,8 @@ class OrchestratorConfig:
     run_budget_usd: float = 0.75  # hard cap on the estimated cost of one run
     max_agent_steps: int = 6
     max_delegations: int = 8
-    planner_max_output_tokens: int = 1800
-    specialist_max_output_tokens: int = 1400
+    planner_max_output_tokens: int = 3000  # reasoning counts against this cap; 1,400 was hit once and returned no text
+    specialist_max_output_tokens: int = 3000
 
 
 @dataclass(frozen=True)
