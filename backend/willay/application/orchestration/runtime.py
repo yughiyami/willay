@@ -204,6 +204,8 @@ class OrchestratorServices:
     learned_model: Mapping | None = None
     rain_context: Mapping | None = None
     tier_config: TierConfig | None = None
+    water_prompt: str = "water"  # SAM concept prompts; the wording matters (see docs/WATCHER_PROTOCOL.md)
+    marker_prompt: str = "red post"
     budget_remaining: Callable[[], float | None] = lambda: None
     clip_probe: Callable[[bytes, str], int | None] | None = None  # (video, suffix) -> total frames
     overlay_renderer: Callable[[bytes, str, object], list[tuple[int, bytes]]] | None = None  # (video, suffix, measurement)

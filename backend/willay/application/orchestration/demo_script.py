@@ -19,6 +19,7 @@ from willay.domain.tiers import TierConfig
 DEMO_CLIP_ID = "demo-clip"
 DEMO_MARKER_CM = 100.0
 DEMO_OPERATOR_ID = "OP-DEMO"
+DEMO_WATER_PROMPT = "blue water"  # on the fake scene "water" found the river in 35 of 60 frames, "blue water" in 60 of 60
 
 # With real data no site reaches the default PREPARATION threshold (0.5): the static risk is a product of three factors in
 # [0, 1] and the highest real value is about 0.34. The demo therefore lowers the threshold to 0.30 and says so in the trace.

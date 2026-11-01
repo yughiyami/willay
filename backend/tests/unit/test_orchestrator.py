@@ -229,6 +229,29 @@ def test_watcher_measures_a_registered_clip_and_records_the_rise_for_the_run():
     assert result.facts["water_rise_cm"] == pytest.approx(45.0, abs=8.0)
 
 
+def test_the_watcher_uses_the_configured_sam_prompts():
+    from willay.adapters.clip_media import ColorSegmenter
+
+    prompts = []
+
+    class Spy:
+        def segment_video(self, video, prompt, purpose=""):
+            prompts.append(prompt)
+            return ColorSegmenter().segment_video(video, prompt, purpose)
+
+    services = build_services(segmenter=Spy(), water_prompt="blue water", marker_prompt="red post")
+    services.clips.add("clip-1", rising_clip_bytes(45.0), "video/mp4")
+    orchestrator, _, _ = build_orchestrator(
+        {
+            WONDER: [turn("", call("ask_watcher", task="mide", clip_id="clip-1", marker_height_cm=100), model=WONDER), turn("ok", model=WONDER)],
+            SPARK: [turn("", call("measure_clip", clip_id="clip-1", marker_height_cm=100)), turn("hecho")],
+        },
+        services,
+    )
+    run(orchestrator)
+    assert sorted(prompts) == ["blue water", "red post"]
+
+
 def test_watcher_reports_an_unknown_clip_without_failing_the_run():
     orchestrator, _, _ = build_orchestrator(
         {

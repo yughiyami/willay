@@ -529,7 +529,9 @@ class Orchestrator:
             return {"error": "marker_height_cm must be positive"}, []
         suffix = ".mov" if clip.content_type == "video/quicktime" else ".mp4"
         total = self._s.clip_probe(clip.data, suffix) if self._s.clip_probe else None
-        measurement = measure_clip(clip.data, self._s.segmenter, marker, total_frames=total)
+        measurement = measure_clip(
+            clip.data, self._s.segmenter, marker, water_prompt=self._s.water_prompt, marker_prompt=self._s.marker_prompt, total_frames=total
+        )
         watch = measurement.watch
         rise = None if watch.rise_cm is None else round(watch.rise_cm, 1)
         if rise is not None:

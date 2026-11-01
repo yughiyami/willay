@@ -34,6 +34,7 @@ from willay.application.orchestration.demo_script import (
     DEMO_CONFIG_NOTE,
     DEMO_OPERATOR_ID,
     DEMO_TIER_CONFIG,
+    DEMO_WATER_PROMPT,
     STAGES,
     pick_demo_site,
 )
@@ -164,6 +165,7 @@ class DemoRunner:
         model, segmenter, image = self._models(mode, site.site.id)
         services = build_services(deps, self._ranked, segmenter=segmenter, image=image)
         services.tier_config = DEMO_TIER_CONFIG
+        services.water_prompt = DEMO_WATER_PROMPT
         orchestrator = Orchestrator(model, services, deps.orchestrator_config)
 
         total = len(STAGES) + 4
