@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from typing import Mapping
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -30,6 +33,13 @@ LOCAL_WEB_ORIGINS = [
     "http://localhost:4173",  # vite preview
     "http://127.0.0.1:4173",
 ]
+
+
+def web_origins(environ: Mapping[str, str] | None = None) -> list[str]:
+    """Local Vite origins plus any http(s) origins listed in WILLAY_WEB_ORIGINS (comma-separated; no wildcards)."""
+    env = os.environ if environ is None else environ
+    extra = [o.strip().rstrip("/") for o in (env.get("WILLAY_WEB_ORIGINS") or "").split(",")]
+    return LOCAL_WEB_ORIGINS + [o for o in extra if o.startswith(("http://", "https://")) and "*" not in o]
 
 
 def _hazard_to_dict(ctx: HazardContext) -> dict:
@@ -67,7 +77,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=LOCAL_WEB_ORIGINS,
+        allow_origins=web_origins(),
         allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )

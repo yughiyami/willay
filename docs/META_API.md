@@ -93,6 +93,19 @@ models.** Even so, never send personal data: only public official documents, syn
   $0.012). SAM returned a water match on 32 of 60 frames of that flat-coloured fake scene, which shows nothing about real water
   (see `docs/WATCHER_PROTOCOL.md`).
 
+## Multi-agent orchestration: what the live smoke showed (2026-10-31)
+
+One recorded run (`backend/fixtures/demo/live_trace.json`, about US$0.15) exercised the planner and four specialists end to end.
+
+- `muse-wonder-1.0` **accepts flat function tools and `previous_response_id` chaining** on `/responses`, exactly like Spark (tool calls,
+  `function_call_output`, usage fields). A tool-calling turn cost about US$0.013-0.025.
+- **Transient server errors do occur**: `HTTP 503 persistence service error` and `HTTP 400 referenced response not found or expired`
+  (a `previous_response_id` created a moment earlier). The adapter retries 429/5xx and that 400 twice with backoff; if a planner turn still
+  fails, the orchestrator falls back to `muse-spark-1.3` for the rest of the run and says so in the trace.
+- Spark reasoning counts against `max_output_tokens`: 1,400 returned an empty answer once, so the agents use 3,000.
+- SAM prompt wording matters on the fake scene: `water` found the river in 35 of 60 frames (rise 29.2 cm vs 45 true), `river` in none,
+  `blue water` in 60 of 60 (45.0 cm, confidence 0.78). One synthetic clip, not a benchmark.
+
 ## Rate limits
 
 Per team and model: Spark 3,000 RPM / 4M TPM (Contributor variants 150 RPM), SAM 3,000 RPM, Muse Image 150 RPM, Voice

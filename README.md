@@ -166,6 +166,10 @@ Endpoints (interactive docs at `http://localhost:8000/docs`):
 | POST | `/alerts/dispatch` | message (and at ATTENTION/EVACUATION call) the synthetic households downstream of a site; EVACUATION needs `operator_confirmation_id` |
 | GET | `/alerts/households`, `/alerts/cases?status=` | household statuses (sent / SAFE / NEEDS_HELP / NO_ANSWER) and operator cases |
 | POST | `/alerts/{id}/response` | a simulator reply (`SAFE`, `NEEDS_HELP`, `NO_ANSWER`); SAFE closes the open case |
+| POST | `/agent/run`, GET `/agent/trace/{id}[/stream]`, GET `/agent/proposals`, POST `/agent/proposals/{id}/approve` | multi-agent orchestration, live trace and the operator's approval (see below) |
+| POST | `/demo/run`, GET `/demo/status` | scripted end-to-end demo, offline or live |
+| GET | `/learned-model`, `/enfen/timeline` | learned district model evaluation, ENFEN communique timeline |
+| POST | `/telephony/twilio/gather` | signed Twilio key-press webhook (404 unless Twilio is the provider) |
 | POST | `/cards/evacuation` | one Spanish evacuation card image for a SYNTHETIC household (tier from the domain rules) |
 
 Example:
@@ -178,7 +182,7 @@ curl -X POST localhost:8000/alerts/evaluate -H "Content-Type: application/json" 
 
 ## Run the web app
 
-Requires Node 20+. Start the backend first (port 8000).
+Requires Node 20+. Start the backend first (port 8000; set `WILLAY_WEB_ORIGINS` to allow another web port).
 
 ```bash
 cd web
@@ -221,6 +225,68 @@ Muse Image, SAM 3.1), prices and the list of things we could not verify are in `
 The web app has an operator assistant box (text or a microphone button; the browser records, converts to 16 kHz mono WAV and
 posts it). The assistant moves the Cesium camera, highlights a site and its flow path and toggles layers through `ui_actions`.
 Start the backend with `WILLAY_META_ENABLED=1` to use it.
+
+## Operator console and Meta agents ("Meta at 100%")
+
+One page, one console: the Cesium globe on the left (relaves, flow paths, safe points, intakes, district choropleth including the
+learned model) and five tabs on the right, in Spanish for the operators.
+
+![Operator console after the offline demo](docs/media/console.png)
+
+| Tab | What it does |
+|---|---|
+| **Agentes** | Chat and microphone for the planner, plus a live timeline of every model call and tool call (agent, model badge `muse-wonder` / `muse-spark` / `sam-3.1` / `muse-image` / `voice-transcribe`, latency, tokens, estimated cost, guardrails). |
+| **Alertas** | Dispatch proposals prepared by the agents, the operator's **Confirmar y enviar** button (needs an operator id), household statuses, the phone simulator and the open cases. |
+| **Vigía** | Upload a clip (no people) -> SAM 3.1 overlays and `rise_cm`; or analyse the bundled fake clip offline. |
+| **Evidencia** | Backtest AUC with bootstrap intervals (static, CENEPRED, ensembles, learned model), coefficients and calibration, the ENFEN timeline, data-quality flags. |
+| **Fichas** | Muse Image evacuation card for a synthetic household (or the recorded one). |
+
+**Demo mode** (top bar) runs the scripted scenario: ENFEN extraordinary -> PREPARATION ranking -> SENAMHI orange -> ATTENTION -> watcher
+clip rise -> PENDING_CONFIRMATION -> **the operator confirms** -> dispatch -> a household answers 2 -> operator case. It is the real
+orchestrator, tools, rules and guardrails in both modes: *Grabado* replays a recorded live run (`backend/fixtures/demo/`, no network,
+no cost, marked "grabado" in the trace) and *Meta en vivo* (needs `WILLAY_META_ENABLED=1`) calls the models. The operator click is a real
+click unless the "confirmar solo" box is ticked, which performs the same call and writes "simulated" in the trace. With real data no site
+reaches the default PREPARATION threshold (0.5, the static risk tops out near 0.34), so the demo lowers it to 0.30 and says so in the trace.
+
+### Multi-agent orchestration (Responses API)
+
+`POST /agent/run` starts a **planner** (`muse-wonder-1.0`, falling back to `muse-spark-1.3` when Wonder errors, when the remaining budget
+is low, or per call if it fails) that delegates through tools to four **specialists** (`muse-spark-1.3`): HazardAnalyst (ENFEN / CHIRPS /
+SENAMHI context, ranking, backtest and learned-model explanations), Watcher (SAM 3.1 clip analysis), Dispatcher (prepares proposals) and
+Communicator (Spanish messages, Muse Image cards; Quechua only from reviewed templates). `GET /agent/trace/{run_id}` returns the trace and
+`GET /agent/trace/{run_id}/stream` streams it as Server-Sent Events. Hard guardrails in code (`application/orchestration/`):
+
+- **Tiers only from the domain.** Agents cannot pass conditions: `evaluate_alert` reads the run's scenario (set by the operator or the demo)
+  plus the clip measurement; an answer that cites a tier code no tool returned is replaced.
+- **Nobody but the operator sends.** No agent has a send tool. `prepare_dispatch` creates a proposal; `POST /agent/proposals/{id}/approve`
+  (the operator's click, with an operator id) re-evaluates the tier with that confirmation and only then dispatches. `EVACUATION` exists
+  only as `PENDING_CONFIRMATION` until then.
+- **Budget guard.** The existing usage log and `WILLAY_META_BUDGET_USD`, plus a per-run cap (`WILLAY_RUN_BUDGET_USD`).
+- **No PII in the trace.** Arguments are summarised (ids and numbers only; free text becomes `<text N chars>`).
+
+Environment variable NAMES added (set values in your local `.env`; `.env.example` is write-protected for the tooling that built this):
+
+```
+WILLAY_PLANNER_MODEL=muse-wonder-1.0         WILLAY_PLANNER_FALLBACK_MODEL=muse-spark-1.3
+WILLAY_SPECIALIST_MODEL=muse-spark-1.3       WILLAY_PLANNER_MIN_BUDGET_USD=0.40
+WILLAY_RUN_BUDGET_USD=0.75                   WILLAY_DEMO_PACE_S=0.6
+WILLAY_WEB_ORIGINS=                          WILLAY_CALLS_PROVIDER=simulated
+TWILIO_ACCOUNT_SID=  TWILIO_AUTH_TOKEN=  TWILIO_FROM_NUMBER=  WILLAY_PUBLIC_BASE_URL=
+```
+
+`WILLAY_SPECIALIST_MODEL` may name a `-contributor` variant (cheaper, content may train Meta models; only synthetic data is ever sent).
+Transient Responses errors (429, 5xx, a response id not visible yet) are retried twice with backoff.
+
+### Learned risk model
+
+`scripts/train_risk_model.py` trains an L2 logistic regression on district features (train seasons 2003-2016, test 2017 and 2023). It does
+**not** beat the a-priori static score (AUC 0.55 vs 0.93 in 2017, interval includes 0.5): see `docs/BACKTEST.md` for why (regime shift, no
+deep learning on 78 districts) and for the table.
+
+### Record the demo (once, costs credits)
+
+`scripts/record_demo.py --live --yes-synthetic-only --budget 0.5` runs the demo against the real models and rewrites
+`backend/fixtures/demo/orchestrator_recording.json` and `live_trace.json` (a real trace; synthetic clip and households only).
 
 ## Status
 

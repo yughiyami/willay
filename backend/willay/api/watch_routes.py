@@ -138,4 +138,4 @@ def register_watch_routes(app: FastAPI, deps: AppDependencies) -> None:
         measurement = measure_clip(
             video, segmenter, DEMO_MARKER_CM, water_prompt=DEMO_WATER_PROMPT, marker_prompt=DEFAULT_MARKER_PROMPT, total_frames=info.frames
         )
-        return watch_payload(video, ".mp4", info, measurement, DEMO_MARKER_CM, DEMO_WATER_PROMPT, DEFAULT_MARKER_PROMPT, analyzer=analyzer, synthetic_clip=True)
+        return watch_payload(video, ".mp4", info, measurement, DEMO_MARKER_CM, DEMO_WATER_PROMPT, DEFAULT_MARKER_PROMPT, analyzer=analyzer, synthetic_clip=True, estimated_cost_usd=0.0)

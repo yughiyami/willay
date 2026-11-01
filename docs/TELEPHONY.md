@@ -176,3 +176,50 @@ real Asterisk and a real trunk. Check these first on your own server:
 - `StasisStart` really arrives only when the callee answers on your trunk (some providers answer early with
   early media), and `ChannelDtmfReceived` fires for RFC 4733 and in-band tones as your trunk delivers them;
 - the recordings play from the media URI you configured.
+
+
+## Optional channel: Twilio (disabled by default)
+
+An alternative to Asterisk for trying real calls without your own SIP trunk. It is **off unless** `WILLAY_CALLS_ENABLED=1` and
+`WILLAY_CALLS_PROVIDER=twilio` and every variable below is set; anything else keeps the simulated adapter, and `GET /health`
+reports `calls_mode` with the NAMES of what is missing. The allow-list (`WILLAY_CALL_ALLOWLIST`) is enforced exactly as for
+Asterisk: a number that is not on it is refused before any request leaves the machine, and an empty list refuses everything.
+
+| Variable | Purpose |
+|---|---|
+| `WILLAY_CALLS_PROVIDER` | `simulated`, `asterisk` (default when calls are enabled) or `twilio` |
+| `TWILIO_ACCOUNT_SID` | account SID (`AC...`) |
+| `TWILIO_AUTH_TOKEN` | auth token: used for the REST call and to validate the webhook signature; never logged, never in a URL |
+| `TWILIO_FROM_NUMBER` | the Twilio number that places the call (E.164) |
+| `WILLAY_PUBLIC_BASE_URL` | public `https://` address Twilio can reach (your tunnel), no trailing path |
+
+How one call works (`backend/willay/adapters/twilio_calls.py`, fully mocked in `tests/unit/test_twilio_calls.py`):
+
+1. `POST https://api.twilio.com/2010-04-01/Accounts/<SID>/Calls.json` with `To`, `From`, `Timeout` and **inline TwiML**:
+   `<Gather numDigits="1" action="<PUBLIC_URL>/telephony/twilio/gather">` wrapping a Spanish
+   `<Say language="es-MX">` message for the tier (it ends with "Presione 1 si esta a salvo, 2 si necesita ayuda" and the statement that
+   the alert complements SENAMHI, INDECI and ENFEN).
+2. The key press arrives at **`POST /telephony/twilio/gather`**. The route recomputes `X-Twilio-Signature`
+   (`base64(HMAC-SHA1(auth token, public URL + sorted POST params))`) over the PUBLIC url and answers **403** on a mismatch or a missing
+   header; the route answers 404 unless Twilio is the active provider.
+3. `1` = `SAFE`, `2` = `NEEDS_HELP`; any other key re-prompts. A call that ends (`no-answer`, `busy`, `failed`, `canceled`, `completed`)
+   without a key press, or that exceeds `WILLAY_CALL_RING_TIMEOUT_S + WILLAY_CALL_DTMF_TIMEOUT_S`, is `NO_ANSWER` and is hung up.
+   `NEEDS_HELP` and `NO_ANSWER` open an operator case, exactly as with Asterisk.
+
+**Cloudflare Tunnel (to let Twilio reach your laptop).** Twilio needs a public HTTPS address for the webhook. A quick tunnel needs no
+account or DNS:
+
+```bash
+# 1. start the API locally (WILLAY_CALLS_ENABLED=1, WILLAY_CALLS_PROVIDER=twilio and the TWILIO_* names set in your .env)
+cd backend && ../.venv/Scripts/python -m uvicorn willay.api.app:app --port 8000
+# 2. in another terminal, expose it
+cloudflared tunnel --url http://localhost:8000
+#    it prints https://<random-words>.trycloudflare.com : put THAT value in WILLAY_PUBLIC_BASE_URL and restart the API
+```
+
+The signature is checked against `WILLAY_PUBLIC_BASE_URL`, so the value must match the address Twilio calls character for character
+(the quick-tunnel address changes every time you start it). For a stable address use a named tunnel with your own domain. Use a Twilio
+trial account with your own verified number, put only that number in `WILLAY_CALL_ALLOWLIST`, point `WILLAY_DEMO_HOUSEHOLDS_FILE` at a
+LOCAL copy of the household fixture carrying that number, and stop the tunnel when you are done. Not verified live: no real Twilio call
+was placed while building this (all tests use a mocked transport); the TwiML grammar and the signature algorithm follow Twilio's
+published documentation.

@@ -23,6 +23,7 @@ export interface ProposalsPanel {
 export function initProposals(options: ProposalsOptions): ProposalsPanel {
   const list = document.getElementById("proposals") as HTMLElement;
   const drafts = new Map<string, string>(); // confirmation ids typed so far survive a refresh
+  let signature = ""; // the list is rebuilt only when a proposal changed, so typing is never interrupted
 
   const card = (p: ProposalInfo): HTMLElement => {
     const item = el("li", `proposal tier-${p.tier.toLowerCase()} status-${p.status}`);
@@ -97,10 +98,11 @@ export function initProposals(options: ProposalsOptions): ProposalsPanel {
   async function refresh(): Promise<void> {
     try {
       const { proposals } = await fetchProposals();
-      const active = list.querySelector("input:focus");
-      if (active) return; // do not rebuild the form while the operator is typing
-      list.replaceChildren(...(proposals.length ? [...proposals].reverse().map(card) : [el("li", "muted", "Sin propuestas. Los agentes proponen; usted decide.")]));
+      const next = JSON.stringify(proposals.map((p) => [p.id, p.status, p.evaluated_tier, p.water_rise_cm]));
       options.onPending(proposals.filter((p) => p.status === "awaiting_operator").length);
+      if (next === signature || list.querySelector("input:focus")) return;
+      signature = next;
+      list.replaceChildren(...(proposals.length ? [...proposals].reverse().map(card) : [el("li", "muted", "Sin propuestas. Los agentes proponen; usted decide.")]));
     } catch {
       // the backend may be restarting; the next event refreshes again
     }

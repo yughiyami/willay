@@ -74,3 +74,10 @@ contract; see `docs/META_API.md`.
 - The geometry reads the water mask next to the post; foam, reflections and wet banks can confuse the mask. The overlay frames
   exist so a human can check what was measured.
 - Falling water is reported as a negative rise.
+
+## Prompt wording (measured once, on the fake clip)
+
+On the synthetic scene (blue river, red post, true rise 45 cm) the water prompt changed the result: `water` 29.2 cm with 35/60 valid
+frames, `river` nothing, `blue water` 45.0 cm with 60/60 valid frames and confidence 0.78. The demo uses `blue water`
+(`DEMO_WATER_PROMPT`); the watcher tool takes the prompts from the orchestrator services. This says nothing about real rivers: test the
+wording on your own clips before relying on it.
