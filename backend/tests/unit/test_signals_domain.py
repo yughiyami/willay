@@ -113,6 +113,13 @@ def test_several_settlements_with_one_name_in_one_district_resolve_to_the_distri
     assert match is not None and match.level == "district" and (match.lon, match.lat) == (-76.7, -11.95)
 
 
+def test_query_places_are_the_districts_that_hold_our_settlements_else_all_districts():
+    assert Gazetteer(entries()).query_places() == ["LURIGANCHO", "SAN MATEO"]
+    only_districts = Gazetteer([e for e in entries() if e.kind == "district"])
+    assert only_districts.query_places() == ["LURIGANCHO", "SAN BARTOLOME"]
+    assert Gazetteer([]).query_places() == []
+
+
 # --- aggregation per district -------------------------------------------------------------------
 
 

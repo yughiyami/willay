@@ -85,8 +85,11 @@ class Gazetteer:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def place_names(self) -> list[str]:
-        """Canonical district names, for building search queries."""
+    def query_places(self) -> list[str]:
+        """District names to search for: those that hold at least one of our settlements, else every district we know."""
+        with_settlements = {e.district for e in self._entries if e.kind == "settlement" and e.district}
+        if with_settlements:
+            return sorted(with_settlements)
         return sorted({e.place for e in self._entries if e.kind == "district"})
 
     def lookup(self, place_name: str, ubigeo_guess: str | None = None) -> GeoMatch | None:
