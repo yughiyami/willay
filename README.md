@@ -12,6 +12,9 @@ Built for the Meta Global AI Developer Hackathon.
 > - **The LLM never decides an alert level.** Tiers come from deterministic rules in
 >   `backend/willay/domain/tiers.py`. Language models may only rephrase or explain, and a rephrased
 >   message is rejected (the template is used instead) if any required fact is missing.
+> - **Public signals are context, never a trigger.** News and web reports of recent events ("señales públicas no verificadas") can add
+>   one reason to an `ATTENTION` result; they never raise a tier, never reach `PENDING_CONFIRMATION` or `EVACUATION` and never start a
+>   dispatch (`docs/SIGNALS.md`).
 > - **EVACUATION needs a human.** Without explicit operator confirmation the result is
 >   `PENDING_CONFIRMATION`, never `EVACUATION`.
 > - **Two data modes.** `WILLAY_DATA_MODE=real` (default) reads open datasets from `WILLAY_DATA_DIR`
@@ -122,12 +125,14 @@ Hexagonal, screaming structure. Dependencies point inward only (enforced by `tes
 backend/
   willay/
     domain/        entities, risk.py, tiers.py, exposure.py, backtest_metrics.py, geo.py, segmentation.py, water_line.py,
-                   safe_point.py, dispatch.py (pure Python)
+                   safe_point.py, dispatch.py, signals.py (pure Python)
     application/   rank_sites, evaluate_alert_tier, compose_alert_message, run_backtest, operator_agent, enfen_ingest,
-                   watch_clip, evacuation_card, judge_messages, dispatch_alerts, safe_point_text
-    ports/         Protocols: SiteRepository, HazardData, Weather, Messaging, Calls, AlertLedger, LLM, Segmentation, Image, Transcription
+                   watch_clip, evacuation_card, judge_messages, dispatch_alerts, safe_point_text, public_signals
+    ports/         Protocols: SiteRepository, HazardData, Weather, Messaging, Calls, AlertLedger, LLM, Segmentation, Image, Transcription,
+                   PublicSearch
     adapters/      in-memory fakes, fixture loader, meta_model_api (Responses/ASR/Image/SAM HTTP), meta_usage, clip_media,
-                   asterisk_ari (telephony), simulated_call, web_whatsapp, alert_ledger, dem_window, safe_points_file
+                   asterisk_ari (telephony), simulated_call, web_whatsapp, alert_ledger, dem_window, safe_points_file, tavily_search,
+                   signals_fixture
     api/           FastAPI app
   fixtures/        synthetic Rimac-basin and backtest JSON
   tests/           unit + api
@@ -171,6 +176,8 @@ Endpoints (interactive docs at `http://localhost:8000/docs`):
 | GET | `/learned-model`, `/enfen/timeline` | learned district model evaluation, ENFEN communique timeline |
 | POST | `/telephony/twilio/gather` | signed Twilio key-press webhook (404 unless Twilio is the provider) |
 | POST | `/cards/evacuation` | one Spanish evacuation card image for a SYNTHETIC household (tier from the domain rules) |
+| GET | `/signals?district=` | public signals ("señales públicas no verificadas"): per district count, latest time and source links; mode `live`, `simulated` or `off` |
+| POST | `/signals/refresh`, `/signals/simulated` | live refresh (Tavily search + Muse Spark extraction, cooldown; needs the env flags) / show the offline SIMULATED set for Demo mode |
 
 Example:
 
@@ -238,7 +245,7 @@ learned model) and five tabs on the right, in Spanish for the operators.
 | **Agentes** | Chat and microphone for the planner, plus a live timeline of every model call and tool call (agent, model badge `muse-wonder` / `muse-spark` / `sam-3.1` / `muse-image` / `voice-transcribe`, latency, tokens, estimated cost, guardrails). |
 | **Alertas** | Dispatch proposals prepared by the agents, the operator's **Confirmar y enviar** button (needs an operator id), household statuses, the phone simulator and the open cases. |
 | **Vigía** | Upload a clip (no people) -> SAM 3.1 overlays and `rise_cm`; or analyse the bundled fake clip offline. |
-| **Evidencia** | Backtest AUC with bootstrap intervals (static, CENEPRED, ensembles, learned model), coefficients and calibration, the ENFEN timeline, data-quality flags. |
+| **Evidencia** | Backtest AUC with bootstrap intervals (static, CENEPRED, ensembles, learned model), coefficients and calibration, the ENFEN timeline, data-quality flags, and "Señales públicas (no verificadas)": a per-district list with source links plus a hollow-marker globe layer (the simulated set is marked "simulado" in Demo mode). |
 | **Fichas** | Muse Image evacuation card for a synthetic household (or the recorded one). |
 
 **Demo mode** (top bar) runs the scripted scenario: ENFEN extraordinary -> PREPARATION ranking -> SENAMHI orange -> ATTENTION -> watcher
@@ -276,6 +283,22 @@ TWILIO_ACCOUNT_SID=  TWILIO_AUTH_TOKEN=  TWILIO_FROM_NUMBER=  WILLAY_PUBLIC_BASE
 
 `WILLAY_SPECIALIST_MODEL` may name a `-contributor` variant (cheaper, content may train Meta models; only synthetic data is ever sent).
 Transient Responses errors (429, 5xx, a response id not visible yet) are retried twice with backoff.
+
+### Public signals (crowd / news corroboration)
+
+Optional and **off by default** (`WILLAY_SIGNALS_ENABLED=0`). With `WILLAY_SIGNALS_ENABLED=1`, `TAVILY_API_KEY` and the Meta extraction model
+(`WILLAY_META_ENABLED=1`), `POST /signals/refresh` searches news and public pages of the last 72 hours for huaico / deslizamiento / desborde /
+relave / inundación in the Rimac-basin district names, has Muse Spark extract `{event_type, place_name, district_ubigeo_guess, event_time,
+confidence, source_url}`, and geocodes the place by exact normalized match against our ANA settlements and districts (unmatched is dropped).
+Raw text is discarded; only event type, our place name, time, and the page URL and domain are kept (no authors, handles or profiles; social
+platforms are never searched). The HazardAnalyst tool `get_public_signals` and `GET /signals` expose them; they can only add a
+"corroborated by N public signals" reason to `ATTENTION`. Purpose, data minimization, the Ley 29733 and ToS notes (to be verified) and the
+unverified parts are in `docs/SIGNALS.md`. Environment variable NAMES (add them to your local `.env`; `.env.example` is write-protected for
+the tooling that built this):
+
+```
+WILLAY_SIGNALS_ENABLED=0     TAVILY_API_KEY=     WILLAY_SIGNALS_MAX_QUERIES=8     WILLAY_SIGNALS_COOLDOWN_S=300
+```
 
 ### Learned risk model
 
