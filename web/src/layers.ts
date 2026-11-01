@@ -8,6 +8,7 @@ import {
   type Entity,
   type Viewer,
 } from "cesium";
+import type { SignalDistrict } from "./consoleTypes";
 import { riskColorCss } from "./riskColor";
 import type {
   DistrictCollection,
@@ -299,5 +300,47 @@ export function showHouseholdMarkers(viewer: Viewer, alerts: HouseholdAlert[]): 
           }
         : undefined,
     });
+  }
+}
+
+// --- public signals (unverified; hollow markers so they never read as a measured risk) ----------------------------------
+
+export const SIGNAL_PREFIX = "signal-";
+const SIGNAL_COLOR = "#9ad1ff";
+
+/** One hollow marker per district with reports. Replaces the previous set. */
+export function showSignals(viewer: Viewer, districts: SignalDistrict[], visible: boolean): void {
+  for (const entity of [...viewer.entities.values]) {
+    if (entity.id.startsWith(SIGNAL_PREFIX)) viewer.entities.remove(entity);
+  }
+  for (const district of districts) {
+    viewer.entities.add({
+      id: `${SIGNAL_PREFIX}${district.ubigeo || district.district}`,
+      name: `Señales públicas no verificadas · ${district.district}${district.simulated ? " (simulado)" : ""}: ${district.count}`,
+      show: visible,
+      position: Cartesian3.fromDegrees(district.lon, district.lat),
+      point: {
+        pixelSize: 12 + Math.min(district.count, 6) * 3,
+        color: Color.fromCssColorString(SIGNAL_COLOR).withAlpha(0.18),
+        outlineColor: Color.fromCssColorString(SIGNAL_COLOR),
+        outlineWidth: district.simulated ? 2 : 3,
+      },
+      label: {
+        text: `${district.count}${district.simulated ? " sim." : ""}`,
+        font: "11px sans-serif",
+        style: LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 3,
+        fillColor: Color.fromCssColorString(SIGNAL_COLOR),
+        outlineColor: Color.BLACK,
+        pixelOffset: new Cartesian2(14, 12),
+        showBackground: false,
+      },
+    });
+  }
+}
+
+export function setSignalsVisible(viewer: Viewer, visible: boolean): void {
+  for (const entity of viewer.entities.values) {
+    if (entity.id.startsWith(SIGNAL_PREFIX)) entity.show = visible;
   }
 }

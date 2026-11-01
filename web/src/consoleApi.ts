@@ -8,6 +8,7 @@ import type {
   LearnedModelInfo,
   ProposalInfo,
   ScenarioInput,
+  SignalsSnapshot,
   TraceEvent,
   TraceSnapshot,
   WatchResult,
@@ -89,3 +90,10 @@ export const generateCard = (
     headers: json,
     body: JSON.stringify({ settlement_name: settlementName, distance_km: distanceKm, settlement_id: settlementId, tier, synthetic_household: true }),
   });
+
+// --- public signals ---------------------------------------------------------------------------------------------------
+export const fetchSignals = (): Promise<SignalsSnapshot> => getJson<SignalsSnapshot>("/signals");
+export const setSimulatedSignals = (enabled: boolean): Promise<SignalsSnapshot> =>
+  postJson("/signals/simulated", { headers: json, body: JSON.stringify({ enabled }) });
+export const refreshSignals = (): Promise<{ report: NonNullable<SignalsSnapshot["last_refresh"]>; signals: SignalsSnapshot }> =>
+  postJson("/signals/refresh", { headers: json, body: "{}" });

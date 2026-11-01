@@ -47,6 +47,7 @@
             <label><input type="checkbox" id="toggle-settlements" checked /> Poblados alcanzados</label>
             <label><input type="checkbox" id="toggle-intakes" checked /> Bocatomas (aprox.)</label>
             <label><input type="checkbox" id="toggle-pasivos" /> Pasivos MINEM 2011 (referencial)</label>
+            <label><input type="checkbox" id="toggle-signals" checked /> Señales públicas (no verificadas)</label>
             <label class="select-row">
               Coroplético por distrito
               <select id="district-metric">
@@ -178,6 +179,16 @@
 
         <!-- Evidencia -->
         <section role="tabpanel" data-panel="evidencia" aria-labelledby="tab-evidencia" hidden>
+          <section id="signals-panel" class="evidence-block signals" aria-labelledby="signals-title">
+            <h3 id="signals-title">Señales públicas (no verificadas)</h3>
+            <p id="signals-banner" class="banner"></p>
+            <p id="signals-status" class="muted" role="status"></p>
+            <div class="row-buttons">
+              <button type="button" id="signals-sim" hidden>Mostrar señales simuladas (demostración)</button>
+              <button type="button" id="signals-refresh" hidden>Actualizar (búsqueda en vivo)</button>
+            </div>
+            <ul id="signals-list" class="signal-list"></ul>
+          </section>
           <div id="evidence"></div>
         </section>
 

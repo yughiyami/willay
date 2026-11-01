@@ -755,3 +755,56 @@ h3 {
     flex-wrap: wrap;
   }
 }
+
+/* --- public signals (unverified) ------------------------------------------------------------------------- */
+.signals {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+}
+.signals h3 {
+  margin: 0 0 4px;
+}
+.signal-list,
+.signal-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.signal-item {
+  border-top: 1px solid var(--line);
+  padding: 6px 0;
+}
+.signal-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+.signal-name {
+  font-weight: 600;
+}
+.signal-count {
+  color: #9ad1ff;
+  font-variant-numeric: tabular-nums;
+}
+.signal-source {
+  margin: 2px 0 0 10px;
+  overflow-wrap: anywhere;
+}
+.signal-source a {
+  color: var(--accent);
+}
+.badge-sim {
+  background: transparent;
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+  margin-left: 6px;
+}

@@ -20,6 +20,8 @@ interface DemoOptions {
   refreshProposals(): void;
   refreshAlerts(): void;
   refreshChips(): void;
+  /** Called when a demonstration starts, so the labelled simulated public signals can be shown. */
+  onStart?(): void;
 }
 
 export interface Demo {
@@ -57,6 +59,7 @@ export function initDemo(options: DemoOptions): Demo {
     if (active) return;
     active = true;
     button.disabled = true;
+    options.onStart?.();
     bar.hidden = false;
     renderSteps(-1);
     setMessage("Iniciando la demostración…");

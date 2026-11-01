@@ -154,3 +154,39 @@ export interface EnfenBulletin {
   alert_status: string;
   magnitude: string;
 }
+
+// --- public signals (unverified news / web reports, context only) ----------------------------------------------------
+
+export interface SignalSource {
+  url: string;
+  domain: string;
+  event_type: string;
+  event_time: string;
+}
+
+export interface SignalDistrict {
+  ubigeo: string;
+  district: string;
+  count: number;
+  latest: string;
+  lon: number;
+  lat: number;
+  label: string;
+  simulated: boolean;
+  sources: SignalSource[];
+}
+
+export interface SignalsSnapshot {
+  mode: "live" | "simulated" | "off";
+  enabled: boolean;
+  simulated: boolean;
+  simulation_available: boolean;
+  label: string;
+  disclaimer: string;
+  window_hours: number;
+  min_corroborating_signals: number;
+  refreshed_at: string | null;
+  note: string;
+  last_refresh: { queries: number; results_seen: number; events_extracted: number; signals_kept: number; dropped_unmatched: number; errors: string[] } | null;
+  districts: SignalDistrict[];
+}

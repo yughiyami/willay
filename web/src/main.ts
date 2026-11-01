@@ -17,6 +17,7 @@ import { refreshChips } from "./chrome";
 import { initDemo } from "./demo";
 import { loadEvidence } from "./evidence";
 import { initProposals } from "./proposalsPanel";
+import { initSignals } from "./signals";
 import { initTabs } from "./tabs";
 import { initVigia } from "./vigia";
 import { type OperatorPanel, initOperatorPanel } from "./operatorPanel";
@@ -208,12 +209,14 @@ async function main(): Promise<void> {
         void proposals.refresh();
         void operatorPanel?.refresh();
       }
+      if (tab === "evidencia") void signals?.refresh();
       if (tab === "evidencia" && !evidenceLoaded) {
         evidenceLoaded = true;
         void loadEvidence(document.getElementById("evidence") as HTMLElement, data.sites);
       }
     });
     let evidenceLoaded = false;
+    let signals: ReturnType<typeof initSignals> | null = null;
 
     const alertBadge = document.getElementById("alert-badge") as HTMLElement;
     const proposals = initProposals({
@@ -246,6 +249,7 @@ async function main(): Promise<void> {
       refreshProposals: () => void proposals.refresh(),
       refreshAlerts: () => void operatorPanel?.refresh(),
       refreshChips: () => void refreshChips(),
+      onStart: () => void signals?.ensureSimulated(),
     });
     initVigia({
       onClipRegistered: (clipId) => agents.setClipId(clipId),
@@ -256,6 +260,11 @@ async function main(): Promise<void> {
       },
     });
     initCards(data.sites);
+    signals = initSignals({
+      viewer,
+      flyTo: (lon, lat) => viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(lon, lat, 30_000), duration: 1.2 }),
+    });
+    void signals.refresh();
     void refreshChips();
     window.setInterval(() => void proposals.refresh(), 5000);
 
