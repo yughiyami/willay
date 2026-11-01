@@ -1,100 +1,208 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Willay Relaves</title>
+    <title>Willay Relaves - Consola del operador</title>
   </head>
   <body>
-    <div id="app">
-      <div id="globe"></div>
-      <aside id="panel" aria-live="polite">
+    <header id="topbar">
+      <div class="brand">
         <h1>Willay Relaves</h1>
-        <p class="tagline">El Nino early warning for tailings sites</p>
-        <p id="banner" class="banner" hidden></p>
-        <p id="status" class="muted">Loading sites...</p>
-        <fieldset class="controls">
-          <legend>Map layers</legend>
-          <label><input type="checkbox" id="toggle-paths" checked /> Downstream flow paths</label>
-          <label><input type="checkbox" id="toggle-intakes" checked /> Water intakes (approximate)</label>
-          <label><input type="checkbox" id="toggle-sites" checked /> Tailings sites</label>
-          <label><input type="checkbox" id="toggle-settlements" checked /> Reached settlements</label>
-          <label><input type="checkbox" id="toggle-pasivos" /> MINEM 2011 liabilities (referential)</label>
-          <label class="select-row">
-            District choropleth
-            <select id="district-metric">
-              <option value="off">Off</option>
-              <option value="static">Static score (ours)</option>
-              <option value="cenepred">CENEPRED baseline</option>
-              <option value="emergency2017">Emergencies Jan-Apr 2017</option>
-              <option value="emergency2023">Emergencies Mar 2023</option>
-            </select>
-          </label>
-          <p id="district-legend" class="muted legend"></p>
-        </fieldset>
-        <fieldset class="controls" id="assistant">
-          <legend>Operator assistant (answers in Spanish)</legend>
-          <form id="agent-form">
-            <input id="agent-input" type="text" maxlength="2000" autocomplete="off"
-              placeholder="Ej.: llévame al relave de mayor riesgo" aria-label="Question for the assistant" />
-            <div class="agent-buttons">
-              <button type="submit" id="agent-send">Send</button>
-              <button type="button" id="agent-mic" aria-pressed="false">Talk</button>
-            </div>
+        <span>Consola del operador · alerta temprana por El Niño</span>
+      </div>
+      <div class="chips" aria-label="Estado del sistema">
+        <span id="chip-data" class="chip">datos…</span>
+        <span id="chip-meta" class="chip">Meta…</span>
+        <span id="chip-calls" class="chip">llamadas…</span>
+      </div>
+      <div class="demo-controls">
+        <select id="demo-mode" aria-label="Origen de la demostración">
+          <option value="offline">Grabado (sin red)</option>
+          <option value="live">Meta en vivo</option>
+        </select>
+        <label class="inline" title="Si no se marca, la demostración se detiene hasta que el operador pulse Confirmar">
+          <input type="checkbox" id="demo-auto" /> confirmar solo
+        </label>
+        <button type="button" id="demo-run" class="primary">&#9654; Modo demostración</button>
+      </div>
+    </header>
+    <div id="demo-bar" hidden>
+      <ol id="demo-steps"></ol>
+      <p id="demo-msg" role="status"></p>
+    </div>
+
+    <div id="app">
+      <section id="map" aria-label="Mapa">
+        <div id="globe"></div>
+        <button type="button" id="drawer-toggle" class="drawer-toggle" aria-expanded="true">Capas y sitios</button>
+        <div id="map-drawer">
+          <p id="banner" class="banner" hidden></p>
+          <p id="status" class="muted">Cargando sitios…</p>
+          <fieldset class="controls">
+            <legend>Capas del mapa</legend>
+            <label><input type="checkbox" id="toggle-sites" checked /> Relaves</label>
+            <label><input type="checkbox" id="toggle-paths" checked /> Rutas de flujo aguas abajo</label>
+            <label><input type="checkbox" id="toggle-settlements" checked /> Poblados alcanzados</label>
+            <label><input type="checkbox" id="toggle-intakes" checked /> Bocatomas (aprox.)</label>
+            <label><input type="checkbox" id="toggle-pasivos" /> Pasivos MINEM 2011 (referencial)</label>
+            <label class="select-row">
+              Coroplético por distrito
+              <select id="district-metric">
+                <option value="off">Apagado</option>
+                <option value="static">Puntaje estático (propio)</option>
+                <option value="learned">Modelo aprendido (rango)</option>
+                <option value="cenepred">Línea base CENEPRED</option>
+                <option value="emergency2017">Emergencias ene-abr 2017</option>
+                <option value="emergency2023">Emergencias mar 2023</option>
+              </select>
+            </label>
+            <p id="district-legend" class="muted legend"></p>
+          </fieldset>
+          <ul id="site-list"></ul>
+          <section id="detail" hidden></section>
+        </div>
+      </section>
+
+      <aside id="console" aria-label="Consola">
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" id="tab-agentes" data-tab="agentes" aria-selected="true">Agentes</button>
+          <button type="button" role="tab" id="tab-alertas" data-tab="alertas" aria-selected="false">Alertas<span id="alert-badge" class="tab-badge" hidden></span></button>
+          <button type="button" role="tab" id="tab-vigia" data-tab="vigia" aria-selected="false">Vigía</button>
+          <button type="button" role="tab" id="tab-evidencia" data-tab="evidencia" aria-selected="false">Evidencia</button>
+          <button type="button" role="tab" id="tab-fichas" data-tab="fichas" aria-selected="false">Fichas</button>
+        </div>
+
+        <!-- Agentes -->
+        <section role="tabpanel" data-panel="agentes" aria-labelledby="tab-agentes">
+          <div id="chat-log" class="chat-log" aria-live="polite"></div>
+          <form id="agent-form" class="chat-form">
+            <input id="agent-input" type="text" maxlength="2000" autocomplete="off" aria-label="Pregunta o instrucción para los agentes"
+              placeholder="Ej.: ¿qué relave requiere preparación y por qué?" />
+            <button type="submit" id="agent-send" class="primary">Enviar</button>
+            <button type="button" id="agent-mic" aria-pressed="false" title="Hablar (se transcribe con Voice Transcribe)">Hablar</button>
           </form>
           <p id="agent-status" class="muted" role="status"></p>
-          <p id="agent-transcript" class="muted"></p>
-          <p id="agent-answer" class="agent-answer"></p>
-          <p class="muted legend">
-            Voice and text go to a third-party model: do not mention personal data. The assistant never sets alert
-            tiers and cannot confirm an evacuation.
-          </p>
-        </fieldset>
-        <fieldset class="controls" id="operator">
-          <legend>Operator: alert the households (synthetic)</legend>
-          <label class="select-row">Site <select id="op-site"></select></label>
-          <label class="select-row">
-            Tier
-            <select id="op-tier">
-              <option value="PREPARATION">PREPARATION (message only)</option>
-              <option value="ATTENTION" selected>ATTENTION (message + call)</option>
-              <option value="EVACUATION">EVACUATION (message + call)</option>
-            </select>
-          </label>
-          <p id="op-evaluated" class="muted legend"></p>
-          <label class="select-row" id="op-confirm-row" hidden>
-            Operator confirmation id (required)
-            <input id="op-confirm" type="text" maxlength="80" autocomplete="off" placeholder="e.g. OP-2026-0007" />
-          </label>
-          <div class="agent-buttons">
-            <button type="button" id="op-send">Send alerts</button>
-            <button type="button" id="op-refresh">Refresh</button>
+          <details class="scenario">
+            <summary>Condiciones del escenario (las fija el operador, no los agentes)</summary>
+            <div class="scenario-grid">
+              <label>ENFEN
+                <select id="sc-enfen">
+                  <option value="">actual</option><option value="neutral">neutral</option><option value="weak">débil</option>
+                  <option value="moderate">moderada</option><option value="strong">fuerte</option><option value="extraordinary">extraordinaria</option>
+                </select>
+              </label>
+              <label>SENAMHI
+                <select id="sc-senamhi">
+                  <option value="">verde</option><option value="yellow">amarillo</option><option value="orange">naranja</option><option value="red">rojo</option>
+                </select>
+              </label>
+              <label>Pronóstico 72 h (mm)<input id="sc-f72" type="number" min="0" step="1" placeholder="0" /></label>
+              <label>Lluvia 24 h (mm)<input id="sc-o24" type="number" min="0" step="1" placeholder="0" /></label>
+            </div>
+          </details>
+          <div class="trace-head">
+            <h3>Agentes trabajando</h3>
+            <div id="trace-totals" class="trace-totals"></div>
           </div>
-          <p id="op-status" class="muted" role="status"></p>
+          <ol id="trace-list" class="trace-list" aria-label="Registro en vivo de los agentes"></ol>
+          <p class="muted legend">
+            Los niveles de alerta los decide solo el código (reglas de dominio). Los agentes proponen; solo el operador envía.
+            No escriba datos personales: los modelos son de un tercero.
+          </p>
+        </section>
+
+        <!-- Alertas -->
+        <section role="tabpanel" data-panel="alertas" aria-labelledby="tab-alertas" hidden>
+          <h3>Propuestas de los agentes</h3>
+          <ul id="proposals" class="proposals"></ul>
+          <fieldset class="controls" id="operator">
+            <legend>Operador: avisar a los hogares (sintéticos)</legend>
+            <label class="select-row">Relave <select id="op-site"></select></label>
+            <label class="select-row">
+              Nivel
+              <select id="op-tier">
+                <option value="PREPARATION">PREPARATION (solo mensaje)</option>
+                <option value="ATTENTION" selected>ATTENTION (mensaje + llamada)</option>
+                <option value="EVACUATION">EVACUATION (mensaje + llamada)</option>
+              </select>
+            </label>
+            <p id="op-evaluated" class="muted legend"></p>
+            <label class="select-row" id="op-confirm-row" hidden>
+              Id de confirmación del operador (obligatorio)
+              <input id="op-confirm" type="text" maxlength="80" autocomplete="off" placeholder="p. ej. OP-2026-0007" />
+            </label>
+            <div class="row-buttons">
+              <button type="button" id="op-send">Enviar alertas</button>
+              <button type="button" id="op-refresh">Actualizar</button>
+            </div>
+            <p id="op-status" class="muted" role="status"></p>
+          </fieldset>
           <p id="op-counts" class="muted"></p>
           <table class="reach hh-table">
-            <thead><tr><th>Household</th><th>Settlement</th><th>Status</th></tr></thead>
+            <thead><tr><th>Hogar</th><th>Poblado</th><th>Estado</th></tr></thead>
             <tbody id="op-households"></tbody>
           </table>
-          <h3>Open operator cases</h3>
+          <h3>Casos abiertos</h3>
           <ul id="op-cases" class="case-list"></ul>
-          <h3>Phone simulator</h3>
-          <div class="phone" aria-label="Simulated phone">
-            <div class="phone-header" id="phone-title">Select a household</div>
+          <h3>Simulador de teléfono</h3>
+          <div class="phone" aria-label="Teléfono simulado">
+            <div class="phone-header" id="phone-title">Seleccione un hogar</div>
             <div class="phone-screen" id="phone-screen"></div>
             <div class="phone-buttons" id="phone-buttons"></div>
           </div>
           <p class="muted legend">
-            Only SYNTHETIC households. Nothing is sent to a real phone: messages stay in this simulator and calls are
-            simulated unless real telephony is enabled on the server. Replies here count as WhatsApp answers.
+            Solo hogares SINTÉTICOS. No se envía nada a un teléfono real: los mensajes quedan en este simulador y las llamadas son
+            simuladas salvo que la telefonía real esté habilitada en el servidor.
           </p>
-        </fieldset>
-        <ul id="site-list"></ul>
-        <section id="detail" hidden></section>
-        <p class="honesty">
-          Complements, never replaces, official SENAMHI / INDECI / ENFEN alerts. Alert tiers are
-          deterministic; language models only explain.
-        </p>
+        </section>
+
+        <!-- Vigía -->
+        <section role="tabpanel" data-panel="vigia" aria-labelledby="tab-vigia" hidden>
+          <h3>Clip del río</h3>
+          <p class="muted">Suba un clip MP4/MOV de hasta 15 s <strong>sin personas</strong>, con un poste marcador visible. SAM 3.1 segmenta el agua y el poste; la subida en cm es geometría determinista.</p>
+          <form id="watch-form" class="stack">
+            <input type="file" id="watch-file" accept="video/mp4,video/quicktime" aria-label="Clip del río" />
+            <label>Altura visible del poste al inicio (cm) <input type="number" id="watch-marker" value="100" min="1" step="1" /></label>
+            <label class="inline"><input type="checkbox" id="watch-nopeople" /> Confirmo que el clip no muestra personas</label>
+            <label class="inline"><input type="checkbox" id="watch-register" checked /> Dejar el clip disponible para el agente Vigía</label>
+            <div class="row-buttons">
+              <button type="submit" id="watch-send" class="primary">Analizar con SAM 3.1</button>
+              <button type="button" id="watch-demo">Analizar clip de demostración (sin red)</button>
+            </div>
+          </form>
+          <p id="watch-status" class="muted" role="status"></p>
+          <div id="watch-result"></div>
+        </section>
+
+        <!-- Evidencia -->
+        <section role="tabpanel" data-panel="evidencia" aria-labelledby="tab-evidencia" hidden>
+          <div id="evidence"></div>
+        </section>
+
+        <!-- Fichas -->
+        <section role="tabpanel" data-panel="fichas" aria-labelledby="tab-fichas" hidden>
+          <h3>Ficha de evacuación (hogar sintético)</h3>
+          <p class="muted">Una ficha ilustrada con Muse Image para el poblado más cercano aguas abajo. El nivel es el que devuelven las reglas; el texto lo fija el código, el modelo solo dibuja.</p>
+          <div class="stack">
+            <label>Relave <select id="card-site"></select></label>
+            <label>Nivel <select id="card-tier">
+              <option value="PREPARATION">PREPARATION</option><option value="ATTENTION">ATTENTION</option><option value="EVACUATION">EVACUATION</option>
+            </select></label>
+            <p id="card-evaluated" class="muted legend"></p>
+            <div class="row-buttons">
+              <button type="button" id="card-generate" class="primary">Generar ficha (Muse Image)</button>
+              <button type="button" id="card-recorded">Ver ficha grabada de la demostración</button>
+            </div>
+          </div>
+          <p id="card-status" class="muted" role="status"></p>
+          <div id="card-result"></div>
+        </section>
+
+        <footer class="honesty">
+          Complementa, no reemplaza, las alertas oficiales de SENAMHI, INDECI y ENFEN. Datos abiertos aproximados: verifique antes de
+          cualquier uso operativo.
+        </footer>
       </aside>
     </div>
     <script type="module" src="/src/main.ts"></script>

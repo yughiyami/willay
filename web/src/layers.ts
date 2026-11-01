@@ -20,7 +20,7 @@ import type {
   SettlementExposure,
 } from "./types";
 
-export type DistrictMetric = "off" | "static" | "cenepred" | "emergency2017" | "emergency2023";
+export type DistrictMetric = "off" | "static" | "learned" | "cenepred" | "emergency2017" | "emergency2023";
 
 export const PATH_PREFIX = "path-";
 export const INTAKE_PREFIX = "intake-";
@@ -174,6 +174,8 @@ export function districtMetricValue(p: DistrictProperties, metric: DistrictMetri
   switch (metric) {
     case "static":
       return p.static_score;
+    case "learned":
+      return p.learned?.percentile_rank ?? null;
     case "cenepred": {
       const values = [p.cenepred?.flood_risk_value, p.cenepred?.mm_risk_value].filter(
         (v): v is number => typeof v === "number",
@@ -192,6 +194,7 @@ export function districtMetricValue(p: DistrictProperties, metric: DistrictMetri
 export const DISTRICT_LEGENDS: Record<DistrictMetric, string> = {
   off: "",
   static: "Static score 0-1 (percentile composite of our own inputs; no outcome or CENEPRED data)",
+  learned: "Modelo aprendido (regresión logística L2, entrenado 2003-2016): rango percentil de la propensión de una temporada típica. No superó al puntaje estático en 2017/2023 (ver Evidencia).",
   cenepred: "CENEPRED El Nino 2027 scenario, mean of flood and mass-movement risk / 5 (comparison baseline)",
   emergency2017: "Dark = at least one INDECI rain-driven emergency, Jan-Apr 2017",
   emergency2023: "Dark = at least one INDECI rain-driven emergency, Mar 2023",

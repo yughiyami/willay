@@ -358,7 +358,7 @@ class Orchestrator:
                     if gathered
                     else "No pude completar la consulta con las herramientas disponibles."
                 )
-            state.trace.emit("agent_end", result_summary=f"{len(text)} chars")
+            state.trace.emit("agent_end", result_summary=f"{len(text)} chars", detail={"text": text[:1500]})
         return text
 
     def _run_tool(self, state: RunState, agent: str, name: str, args: Mapping) -> dict:

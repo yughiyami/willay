@@ -16,7 +16,9 @@ import type {
 
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
-async function getJson<T>(path: string): Promise<T> {
+export const apiUrl = (path: string): string => `${API_BASE_URL}${path}`;
+
+export async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`);
   if (!response.ok) {
     throw new Error(`GET ${path} failed with HTTP ${response.status}`);
@@ -36,7 +38,7 @@ export const fetchIntakes = (): Promise<IntakeLayer> => getJson<IntakeLayer>("/l
 /** Only available with real data; the caller treats a failure as "layer not available". */
 export const fetchDistricts = (): Promise<DistrictCollection> => getJson<DistrictCollection>("/districts");
 
-async function postJson<T>(path: string, init: RequestInit): Promise<T> {
+export async function postJson<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, { method: "POST", ...init });
   if (!response.ok) {
     let detail = `HTTP ${response.status}`;

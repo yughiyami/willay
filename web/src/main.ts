@@ -9,8 +9,16 @@ import {
 } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
+import "./console.css";
 import { fetchDistricts, fetchFlowPaths, fetchIntakes, fetchPasivos, fetchSiteDetail, fetchSites } from "./api";
-import { initAgentPanel } from "./agentPanel";
+import { initAgentConsole } from "./agentConsole";
+import { initCards } from "./cards";
+import { refreshChips } from "./chrome";
+import { initDemo } from "./demo";
+import { loadEvidence } from "./evidence";
+import { initProposals } from "./proposalsPanel";
+import { initTabs } from "./tabs";
+import { initVigia } from "./vigia";
 import { type OperatorPanel, initOperatorPanel } from "./operatorPanel";
 import { executeUiActions } from "./uiActions";
 import {
@@ -73,6 +81,13 @@ const legendEl = document.getElementById("district-legend") as HTMLElement;
 const districts = new DistrictLayer(viewer);
 let operatorPanel: OperatorPanel | null = null;
 
+const drawerToggle = document.getElementById("drawer-toggle") as HTMLButtonElement;
+const drawer = document.getElementById("map-drawer") as HTMLElement;
+drawerToggle.addEventListener("click", () => {
+  drawer.hidden = !drawer.hidden;
+  drawerToggle.setAttribute("aria-expanded", String(!drawer.hidden));
+});
+
 async function select(site: Site, sites: Site[], fly = true): Promise<void> {
   renderDetail(detailEl, site, null);
   highlightPath(viewer, site.id);
@@ -89,7 +104,7 @@ async function select(site: Site, sites: Site[], fly = true): Promise<void> {
     showReachedSettlements(viewer, detail.exposure?.settlements ?? []);
     operatorPanel?.setSite(site.id, detail.alert.tier);
   } catch (error) {
-    statusEl.textContent = `Could not load detail: ${(error as Error).message}`;
+    statusEl.textContent = `No se pudo cargar el detalle: ${(error as Error).message}`;
   }
   void sites;
 }
@@ -98,7 +113,7 @@ async function loadOptionalLayers(sites: Site[]): Promise<void> {
   try {
     addFlowPaths(viewer, await fetchFlowPaths(), sites);
   } catch (error) {
-    statusEl.textContent = `Flow paths unavailable: ${(error as Error).message}`;
+    statusEl.textContent = `Rutas de flujo no disponibles: ${(error as Error).message}`;
   }
   try {
     addIntakes(viewer, await fetchIntakes());
@@ -117,14 +132,14 @@ async function loadOptionalLayers(sites: Site[]): Promise<void> {
   } catch {
     // Synthetic mode has no district data.
     districtSelect.disabled = true;
-    legendEl.textContent = "District layer needs real data (run the build scripts).";
+    legendEl.textContent = "La capa de distritos necesita datos reales (scripts de construcción).";
   }
 }
 
 async function main(): Promise<void> {
   try {
     const data = await fetchSites();
-    statusEl.textContent = `${data.sites.length} tailings sites in the basin, ranked by risk`;
+    statusEl.textContent = `${data.sites.length} relaves en la cuenca, ordenados por riesgo`;
     bannerEl.textContent = data.disclaimer;
     bannerEl.hidden = !data.disclaimer;
     for (const site of data.sites) {
@@ -168,28 +183,81 @@ async function main(): Promise<void> {
       intakes: intakesToggle,
       pasivos: pasivosToggle,
     };
-    initAgentPanel({
-      onReply: (reply) =>
-        executeUiActions(reply.ui_actions, {
-          viewer,
-          selectSite: (siteId) => {
-            const site = data.sites.find((s) => s.id === siteId);
-            if (site) void select(site, data.sites, false);
-          },
-          setLayerVisible: (layer, visible) => {
-            if (layer === "districts") {
-              if (districtSelect.disabled) return;
-              districtSelect.value = visible ? "static" : "off";
-              districtSelect.dispatchEvent(new Event("change"));
-              return;
-            }
-            const toggle = layerToggles[layer];
-            if (!toggle || toggle.disabled) return;
-            toggle.checked = visible;
-            toggle.dispatchEvent(new Event("change"));
-          },
-        }),
+    const uiContext = {
+      viewer,
+      selectSite: (siteId: string) => {
+        const site = data.sites.find((s) => s.id === siteId);
+        if (site) void select(site, data.sites, false);
+      },
+      setLayerVisible: (layer: LayerName, visible: boolean) => {
+        if (layer === "districts") {
+          if (districtSelect.disabled) return;
+          districtSelect.value = visible ? "static" : "off";
+          districtSelect.dispatchEvent(new Event("change"));
+          return;
+        }
+        const toggle = layerToggles[layer];
+        if (!toggle || toggle.disabled) return;
+        toggle.checked = visible;
+        toggle.dispatchEvent(new Event("change"));
+      },
+    };
+
+    const tabs = initTabs((tab) => {
+      if (tab === "alertas") {
+        void proposals.refresh();
+        void operatorPanel?.refresh();
+      }
+      if (tab === "evidencia" && !evidenceLoaded) {
+        evidenceLoaded = true;
+        void loadEvidence(document.getElementById("evidence") as HTMLElement, data.sites);
+      }
     });
+    let evidenceLoaded = false;
+
+    const alertBadge = document.getElementById("alert-badge") as HTMLElement;
+    const proposals = initProposals({
+      onChanged: () => void operatorPanel?.refresh(),
+      onPending: (count) => {
+        alertBadge.hidden = count === 0;
+        alertBadge.textContent = String(count);
+      },
+    });
+
+    const flyToSite = (siteId: string): void => {
+      const site = data.sites.find((candidate) => candidate.id === siteId);
+      if (site) void select(site, data.sites);
+    };
+
+    let demoHandle: ReturnType<typeof initDemo> | null = null;
+    const agents = initAgentConsole({
+      onEvent: (event) => demoHandle?.handleEvent(event),
+      onRunEnd: (snapshot) => {
+        if (snapshot.result?.ui_actions?.length) executeUiActions(snapshot.result.ui_actions, uiContext);
+        void proposals.refresh();
+        void operatorPanel?.refresh();
+        void refreshChips();
+      },
+    });
+    demoHandle = initDemo({
+      agents,
+      flyToSite,
+      selectTab: tabs.select,
+      refreshProposals: () => void proposals.refresh(),
+      refreshAlerts: () => void operatorPanel?.refresh(),
+      refreshChips: () => void refreshChips(),
+    });
+    initVigia({
+      onClipRegistered: (clipId) => agents.setClipId(clipId),
+      onMeasured: (rise) => {
+        if (rise === null) return;
+        (document.getElementById("agent-status") as HTMLElement).textContent =
+          `Subida medida ${rise.toFixed(1)} cm. Pídale al Vigía que la use: el clip quedó registrado para los agentes.`;
+      },
+    });
+    initCards(data.sites);
+    void refreshChips();
+    window.setInterval(() => void proposals.refresh(), 5000);
 
     viewer.selectedEntityChanged.addEventListener((entity) => {
       if (!entity) {

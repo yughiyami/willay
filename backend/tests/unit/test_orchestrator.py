@@ -60,6 +60,15 @@ def test_planner_delegates_to_the_hazard_analyst_and_every_step_is_traced():
     assert "planner.ask_hazard_analyst" in result.tools_used and "hazard_analyst.rank_sites" in result.tools_used
 
 
+def test_each_agent_answer_is_in_the_trace_for_the_operator_to_read():
+    orchestrator, _, _ = build_orchestrator(
+        {WONDER: [turn("", call("ask_hazard_analyst", task="x"), model=WONDER), turn("Resumen del planificador.", model=WONDER)], SPARK: [turn("Analisis del especialista.")]}
+    )
+    _, trace = run(orchestrator)
+    said = {e["agent"]: e["detail"]["text"] for e in trace.snapshot()["events"] if e["kind"] == "agent_end"}
+    assert said == {"hazard_analyst": "Analisis del especialista.", "planner": "Resumen del planificador."}
+
+
 def test_the_planner_sees_specialist_answers_as_tool_results():
     orchestrator, fake, _ = build_orchestrator(
         {

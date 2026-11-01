@@ -141,6 +141,7 @@ export interface DistrictProperties {
     population_2017: number;
   } | null;
   emergencies: Record<string, EmergencySummary>;
+  learned?: { probability: number; percentile_rank: number; scope: string } | null;
 }
 
 export interface DistrictCollection {
