@@ -114,6 +114,9 @@ class AppDependencies:
     usage_log: object | None = None  # the Meta usage log (spend and budget), when live Meta is wired
     rain_context: Mapping | None = None
     tier_config: TierConfig | None = None
+    demo_recording: Mapping | None = None  # recorded orchestrator turns for the offline demo (scripts/record_demo.py)
+    demo_pace_s: float = 0.6  # pause between replayed model turns so the audience can follow the trace
+    demo_confirm_timeout_s: float = 900.0  # how long the demo waits for the operator's click
 
 
 def orchestrator_config_from_env(environ: Mapping[str, str] | None = None) -> OrchestratorConfig:
@@ -436,12 +439,35 @@ def attach_calls_from_env(deps: AppDependencies, environ: Mapping[str, str] | No
     return deps
 
 
+DEMO_RECORDING_FILE = Path(__file__).resolve().parents[2] / "fixtures" / "demo" / "orchestrator_recording.json"
+
+
+def load_demo_recording(path: Path | None = None) -> Mapping | None:
+    target = path or DEMO_RECORDING_FILE
+    if not target.exists():
+        return None
+    try:
+        return json.loads(target.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def _with_demo(deps: AppDependencies, environ: Mapping[str, str] | None = None) -> AppDependencies:
+    env = os.environ if environ is None else environ
+    deps.demo_recording = load_demo_recording()
+    try:
+        deps.demo_pace_s = float(env.get("WILLAY_DEMO_PACE_S", deps.demo_pace_s))
+    except ValueError:
+        pass
+    return deps
+
+
 def default_dependencies() -> AppDependencies:
     mode = os.environ.get(ENV_MODE, "real").strip().lower()
     if mode == "synthetic":
-        return attach_calls_from_env(attach_meta_from_env(synthetic_dependencies()))
+        return _with_demo(attach_calls_from_env(attach_meta_from_env(synthetic_dependencies())))
     if mode == "real":
-        return attach_calls_from_env(attach_meta_from_env(real_dependencies()))
+        return _with_demo(attach_calls_from_env(attach_meta_from_env(real_dependencies())))
     raise ValueError(f"{ENV_MODE} must be 'real' or 'synthetic', got '{mode}'")
 
 
@@ -450,6 +476,7 @@ __all__ = [
     "attach_calls_from_env",
     "attach_meta_from_env",
     "default_dependencies",
+    "load_demo_recording",
     "orchestrator_config_from_env",
     "real_dependencies",
     "synthetic_dependencies",

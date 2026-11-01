@@ -27,6 +27,10 @@ class WebWhatsAppSimulator:
         with self._lock:
             self._messages.append(message)
 
+    def reset(self) -> None:
+        with self._lock:
+            self._messages.clear()
+
     def messages_for(self, recipient: str) -> list[SimulatedMessage]:
         with self._lock:
             return [m for m in self._messages if m.recipient == recipient]

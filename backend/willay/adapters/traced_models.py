@@ -80,10 +80,11 @@ class TracedAgentModel:
 
 
 class TracedSegmenter:
-    def __init__(self, inner, model_label: str = MODEL_SAM, standin: bool = False) -> None:
+    def __init__(self, inner, model_label: str = MODEL_SAM, standin: bool = False, replayed: bool = False) -> None:
         self._inner = inner
         self._label = model_label
-        self._standin = standin  # an offline stand-in for SAM (colour threshold): shown as such, never billed
+        self._standin = standin or replayed  # an offline stand-in (colour threshold) or a recording: never billed
+        self._replayed = replayed
 
     def segment_video(self, video: bytes, prompt: str, purpose: str = "") -> VideoSegmentation:
         trace = current_trace()
@@ -101,7 +102,7 @@ class TracedSegmenter:
                 model=self._label,
                 latency_ms=_ms(started),
                 cost_usd=sam_cost(frames=billed) if billed is not None and self._label == MODEL_SAM and not self._standin else 0.0,
-                detail={"standin": True} if self._standin else {},
+                detail={"replayed": True} if self._replayed else ({"standin": True} if self._standin else {}),
                 args_summary=summarize_args({"prompt": prompt, "purpose": purpose}, safe_text_keys=("prompt",)),
                 result_summary=f"{len(result.frames)} frames with a match, billed_frames={billed}",
             )

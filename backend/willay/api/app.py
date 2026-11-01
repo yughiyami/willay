@@ -10,6 +10,7 @@ from willay.api.schemas import BacktestIn, EvaluateAlertIn
 from willay.api.agent_routes import register_agent_routes
 from willay.api.alert_routes import register_alert_routes
 from willay.api.card_routes import register_card_routes
+from willay.api.demo_routes import register_demo_routes
 from willay.api.orchestration_routes import register_orchestration_routes
 from willay.api.telephony_routes import register_telephony_routes
 from willay.api.watch_routes import register_watch_routes
@@ -290,6 +291,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
     register_agent_routes(app, deps, lambda: ranked_sites())
     register_orchestration_routes(app, deps, lambda: ranked_sites(), find_ranked)
     register_telephony_routes(app, deps)
+    register_demo_routes(app, deps, lambda: ranked_sites(), find_ranked)
 
     return app
 

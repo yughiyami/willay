@@ -129,6 +129,10 @@ class ProposalStore:
         with self._lock:
             return list(self._items.values())
 
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
     def reject(self, proposal_id: str) -> Proposal:
         with self._lock:
             proposal = self._items.get(proposal_id)

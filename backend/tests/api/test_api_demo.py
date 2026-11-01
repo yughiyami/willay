@@ -95,7 +95,7 @@ def test_the_offline_demo_runs_the_whole_chain_with_the_simulated_operator_click
     trace = wait_for(client, run["run_id"])
     assert trace["status"] == "completed", trace["result"]
     titles = [s["detail"]["key"] for s in steps(trace)]
-    assert titles == ["enfen", "senamhi", "watcher", "operator", "dispatch", "household_reply", "done"]
+    assert titles == ["start", "enfen", "senamhi", "watcher", "operator", "dispatch", "household_reply", "done"]
 
     # tiers shown to the audience come from the rules at each stage
     evaluated = [e["result_summary"] for e in trace["events"] if e["kind"] == "tool_call" and e["tool"] == "evaluate_alert"]

@@ -67,6 +67,50 @@ class ApproveIn(BaseModel):
     operator_confirmation_id: str = Field(default="", max_length=80)
 
 
+class ApprovalError(Exception):
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def approve_and_dispatch(
+    deps: AppDependencies,
+    find_ranked: Callable[[str], RankedSite],
+    proposal_id: str,
+    operator_confirmation_id: str | None,
+    simulated: bool = False,
+) -> dict:
+    """The operator's click: approve the proposal (tier re-evaluated by the rules) and dispatch to the synthetic households.
+
+    `simulated=True` is used only by the demo's optional auto-confirm and is written in the trace as such.
+    """
+    proposal = deps.proposals.get(proposal_id)
+    if proposal is None:
+        raise ApprovalError(404, f"unknown proposal '{proposal_id}'")
+    ranked_site = find_ranked(proposal.site_id)
+    try:
+        approve_proposal(deps.proposals, proposal_id, operator_confirmation_id, ranked_site.static_risk)
+    except ProposalError as error:
+        raise ApprovalError(422 if "confirmation id" in str(error) else 409, str(error)) from error
+    try:
+        dispatch = execute_dispatch(deps, ranked_site, proposal.final_tier or proposal.tier, proposal.operator_confirmation_id)
+    except ValueError as refused:
+        deps.proposals.reopen(proposal_id)
+        raise ApprovalError(409, str(refused)) from refused
+    deps.proposals.mark_dispatched(proposal_id, dispatch["dispatch_id"])
+    trace = deps.traces.get(proposal.run_id)
+    if trace is not None:
+        who = "simulated operator click (demo auto-confirm)" if simulated else "operator click"
+        trace.emit(
+            "operator_action",
+            agent="operator",
+            result_summary=f"approved {proposal_id} by {who}: {dispatch['tier']} dispatched to {dispatch['households_targeted']} synthetic household(s)",
+            detail={"proposal_id": proposal_id, "dispatch_id": dispatch["dispatch_id"], "tier": dispatch["tier"],
+                    "operator_confirmation_id": proposal.operator_confirmation_id, "simulated": simulated},
+        )
+    return {"proposal": proposal.to_dict(), "dispatch": dispatch}
+
+
 def build_services(
     deps: AppDependencies,
     ranked: Callable[[], Sequence[RankedSite]],
@@ -185,28 +229,10 @@ def register_orchestration_routes(
 
     @app.post("/agent/proposals/{proposal_id}/approve")
     def approve(proposal_id: str, request: ApproveIn) -> dict:
-        proposal = deps.proposals.get(proposal_id)
-        if proposal is None:
-            raise HTTPException(status_code=404, detail=f"unknown proposal '{proposal_id}'")
-        ranked_site = find_ranked(proposal.site_id)
         try:
-            approve_proposal(deps.proposals, proposal_id, request.operator_confirmation_id, ranked_site.static_risk)
-        except ProposalError as error:
-            status = 422 if "confirmation id" in str(error) else 409
-            raise HTTPException(status_code=status, detail=str(error)) from error
-        try:
-            dispatch = execute_dispatch(deps, ranked_site, proposal.final_tier or proposal.tier, proposal.operator_confirmation_id)
-        except ValueError as refused:
-            deps.proposals.reopen(proposal_id)
-            raise HTTPException(status_code=409, detail=str(refused)) from refused
-        deps.proposals.mark_dispatched(proposal_id, dispatch["dispatch_id"])
-        note_in_trace(
-            proposal.run_id,
-            f"approved {proposal_id} by operator click: {dispatch['tier']} dispatched to {dispatch['households_targeted']} synthetic household(s)",
-            proposal_id=proposal_id, dispatch_id=dispatch["dispatch_id"], tier=dispatch["tier"],
-            operator_confirmation_id=proposal.operator_confirmation_id,
-        )
-        return {"proposal": proposal.to_dict(), "dispatch": dispatch}
+            return approve_and_dispatch(deps, find_ranked, proposal_id, request.operator_confirmation_id)
+        except ApprovalError as error:
+            raise HTTPException(status_code=error.status_code, detail=str(error)) from error
 
     @app.post("/agent/proposals/{proposal_id}/reject")
     def reject(proposal_id: str) -> dict:

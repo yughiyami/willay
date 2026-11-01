@@ -15,6 +15,13 @@ class InMemoryAlertLedger:
         self._alerts: dict[str, HouseholdAlert] = {}
         self._cases: list[OperatorCase] = []
 
+    def reset(self) -> None:
+        """Forget every alert and case (the demo starts from a clean synthetic state)."""
+        with self._lock:
+            self._counters.clear()
+            self._alerts.clear()
+            self._cases.clear()
+
     def new_id(self, prefix: str) -> str:
         with self._lock:
             self._counters[prefix] = self._counters.get(prefix, 0) + 1
