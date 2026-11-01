@@ -10,6 +10,7 @@ from willay.api.schemas import BacktestIn, EvaluateAlertIn
 from willay.api.agent_routes import register_agent_routes
 from willay.api.alert_routes import register_alert_routes
 from willay.api.card_routes import register_card_routes
+from willay.api.orchestration_routes import register_orchestration_routes
 from willay.api.watch_routes import register_watch_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
 from willay.application.safe_point_text import PROPOSED_LABEL
@@ -286,6 +287,7 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
     register_watch_routes(app, deps)
     register_card_routes(app, deps)
     register_agent_routes(app, deps, lambda: ranked_sites())
+    register_orchestration_routes(app, deps, lambda: ranked_sites(), find_ranked)
 
     return app
 

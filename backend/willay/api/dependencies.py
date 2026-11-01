@@ -25,7 +25,7 @@ from willay.adapters.geodata.emergencies import (
     load_indeci_csv,
 )
 from willay.adapters.geodata.loader import load_real_world
-from willay.adapters.geodata.timeseries import load_enfen_csv
+from willay.adapters.geodata.timeseries import load_chirps_csv, load_enfen_csv
 from willay.adapters.households_fixture import load_households
 from willay.adapters.in_memory import InMemorySiteRepository
 from willay.adapters.simulated_call import SimulatedCallAdapter
@@ -34,10 +34,20 @@ from willay.adapters.safe_points_file import FILE_NAME as SAFE_POINTS_FILE
 from willay.adapters.safe_points_file import load_proposed_safe_points
 from willay.adapters.reviewed_templates import FileReviewedTemplates
 from willay.application.district_backtest import STANDARD_EVENTS
+from willay.application.orchestration.runtime import (
+    DEFAULT_FALLBACK_MODEL,
+    DEFAULT_PLANNER_MODEL,
+    DEFAULT_SPECIALIST_MODEL,
+    ClipStore,
+    OrchestratorConfig,
+    ProposalStore,
+)
+from willay.application.orchestration.trace import TraceStore
 from willay.application.run_backtest import BacktestDataset
 from willay.domain.dispatch import Household
 from willay.domain.district_score import DEFAULT_WEIGHTS, DistrictFeatures, percentile_ranks, score_districts
 from willay.domain.entities import HazardContext, RainfallAnomaly
+from willay.domain.tiers import TierConfig
 from willay.domain.exposure import ExposureConfig
 from willay.ports.agent import AgentModelPort, StructuredExtractionPort
 from willay.ports.alert_ledger import AlertLedgerPort
@@ -94,6 +104,51 @@ class AppDependencies:
     calls: CallPort = field(default_factory=SimulatedCallAdapter)
     calls_mode: str = "simulated"
     ledger: AlertLedgerPort = field(default_factory=InMemoryAlertLedger)
+    # Multi-agent orchestrator: models, run traces, dispatch proposals and the river-watcher clips.
+    orchestrator_config: OrchestratorConfig = field(default_factory=OrchestratorConfig)
+    traces: TraceStore = field(default_factory=TraceStore)
+    proposals: ProposalStore = field(default_factory=ProposalStore)
+    clips: ClipStore = field(default_factory=ClipStore)
+    usage_log: object | None = None  # the Meta usage log (spend and budget), when live Meta is wired
+    rain_context: Mapping | None = None
+    tier_config: TierConfig | None = None
+
+
+def orchestrator_config_from_env(environ: Mapping[str, str] | None = None) -> OrchestratorConfig:
+    env = os.environ if environ is None else environ
+    defaults = OrchestratorConfig()
+
+    def number(name: str, default: float) -> float:
+        try:
+            return float(env[name]) if env.get(name) else default
+        except ValueError:
+            return default
+
+    return OrchestratorConfig(
+        planner_model=env.get("WILLAY_PLANNER_MODEL") or DEFAULT_PLANNER_MODEL,
+        planner_fallback_model=env.get("WILLAY_PLANNER_FALLBACK_MODEL") or DEFAULT_FALLBACK_MODEL,
+        specialist_model=env.get("WILLAY_SPECIALIST_MODEL") or DEFAULT_SPECIALIST_MODEL,
+        min_planner_budget_usd=number("WILLAY_PLANNER_MIN_BUDGET_USD", defaults.min_planner_budget_usd),
+        run_budget_usd=number("WILLAY_RUN_BUDGET_USD", defaults.run_budget_usd),
+    )
+
+
+def _rain_context(data: DataDir) -> Mapping | None:
+    path = data.processed("chirps_v2_rimac_daily_mm.csv")
+    if not path.exists():
+        return None
+    series = load_chirps_csv(path)
+    if not series:
+        return None
+    last = max(r.date for r in series)
+    window = [r for r in series if (last - r.date).days < 30]
+    return {
+        "source": "CHIRPS v2 daily series (5 km), mean over the sierra cells of the Rimac bbox",
+        "series_start": min(r.date for r in series).isoformat(),
+        "last_date": last.isoformat(),
+        "trailing_30d_sierra_mean_mm": round(sum(r.sierra_mean_mm for r in window), 1),
+        "caveat": "5 km satellite estimate: it underestimates local peaks and is a wetness proxy, not a trigger",
+    }
 
 
 def reviewed_templates_from_env(environ: Mapping[str, str] | None = None) -> FileReviewedTemplates:
@@ -303,6 +358,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         pasivos=world.pasivos,
         district_collection=_district_collection(world, data, learned),
         learned_model=learned,
+        rain_context=_rain_context(data),
         backtest_results=backtest_results,
         reviewed_templates=reviewed_templates_from_env(env),
         derived_dir=data.derived(),
@@ -332,6 +388,8 @@ def attach_meta_from_env(deps: AppDependencies, environ: Mapping[str, str] | Non
     deps.video_segmenter = adapter
     deps.image_generator = adapter
     deps.extractor = adapter
+    deps.usage_log = getattr(adapter, "usage_log", None)
+    deps.orchestrator_config = orchestrator_config_from_env(env)
     return deps
 
 
@@ -371,6 +429,7 @@ __all__ = [
     "attach_calls_from_env",
     "attach_meta_from_env",
     "default_dependencies",
+    "orchestrator_config_from_env",
     "real_dependencies",
     "synthetic_dependencies",
 ]

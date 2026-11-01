@@ -88,45 +88,56 @@ def case_to_dict(case: OperatorCase, alerts: dict[str, HouseholdAlert]) -> dict:
     }
 
 
+def execute_dispatch(deps: AppDependencies, ranked: RankedSite, tier: AlertTier, operator_confirmation_id: str | None) -> dict:
+    """Message (and at ATTENTION/EVACUATION call) the synthetic households downstream of a site.
+
+    Raises DispatchRefused for a tier that cannot be dispatched or an EVACUATION without an operator confirmation id,
+    and ValueError when the site has no downstream exposure. Shared by the operator's direct form and by the approval
+    of an agent proposal: both are explicit human actions.
+    """
+    if ranked.exposure is None:
+        raise ValueError("this site has no downstream exposure to alert")
+    result = dispatch_alerts(
+        DispatchRequest(
+            tier=tier,
+            site=ranked.site,
+            exposure=ranked.exposure,
+            settlements=tuple(deps.repository.list_settlements()),
+            households=tuple(deps.households),
+            official_source=deps.official_source,
+            operator_confirmation_id=operator_confirmation_id,
+            llm=deps.llm,
+            templates=deps.reviewed_templates,  # type: ignore[arg-type]
+        ),
+        deps.messaging,
+        deps.calls,
+        deps.ledger,
+    )
+    alerts = {a.id: a for a in result.alerts}
+    return {
+        "dispatch_id": result.dispatch_id,
+        "tier": result.tier.value,
+        "site_id": result.site_id,
+        "operator_confirmation_id": result.operator_confirmation_id,
+        "households_targeted": len(result.alerts),
+        "synthetic_households": True,
+        "calls_mode": deps.calls_mode,
+        "alerts": [alert_to_dict(a) for a in result.alerts],
+        "cases": [case_to_dict(c, alerts) for c in result.cases],
+    }
+
+
 def register_alert_routes(app: FastAPI, deps: AppDependencies, find_ranked: Callable[[str], RankedSite]) -> None:
     ledger = deps.ledger
 
     @app.post("/alerts/dispatch")
     def dispatch(request: DispatchIn) -> dict:
         ranked = find_ranked(request.site_id)  # 404 for an unknown site
-        if ranked.exposure is None:
-            raise HTTPException(status_code=409, detail="this site has no downstream exposure to alert")
         try:
-            result = dispatch_alerts(
-                DispatchRequest(
-                    tier=AlertTier(request.tier),
-                    site=ranked.site,
-                    exposure=ranked.exposure,
-                    settlements=tuple(deps.repository.list_settlements()),
-                    households=tuple(deps.households),
-                    official_source=deps.official_source,
-                    operator_confirmation_id=request.operator_confirmation_id,
-                    llm=deps.llm,
-                    templates=deps.reviewed_templates,  # type: ignore[arg-type]
-                ),
-                deps.messaging,
-                deps.calls,
-                ledger,
-            )
-        except DispatchRefused as refused:
-            raise HTTPException(status_code=422, detail=str(refused)) from refused
-        alerts = {a.id: a for a in result.alerts}
-        return {
-            "dispatch_id": result.dispatch_id,
-            "tier": result.tier.value,
-            "site_id": result.site_id,
-            "operator_confirmation_id": result.operator_confirmation_id,
-            "households_targeted": len(result.alerts),
-            "synthetic_households": True,
-            "calls_mode": deps.calls_mode,
-            "alerts": [alert_to_dict(a) for a in result.alerts],
-            "cases": [case_to_dict(c, alerts) for c in result.cases],
-        }
+            return execute_dispatch(deps, ranked, AlertTier(request.tier), request.operator_confirmation_id)
+        except ValueError as refused:  # DispatchRefused is a ValueError
+            status = 422 if isinstance(refused, DispatchRefused) else 409
+            raise HTTPException(status_code=status, detail=str(refused)) from refused
 
     @app.get("/alerts/households")
     def households() -> dict:

@@ -580,6 +580,7 @@ class Orchestrator:
                 reasons=evaluation.reasons,
                 context=context,
                 households_targeted=self._s.households(ranked.site.id),
+                tier_config=self._s.tier_config,
             )
         )
         state.proposals.append(proposal)

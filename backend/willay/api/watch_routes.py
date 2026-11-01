@@ -24,6 +24,23 @@ def _pick_overlay_frames(valid_frames: list[int]) -> list[int]:
     return list(dict.fromkeys(picks))
 
 
+def render_overlays(video: bytes, suffix: str, measurement) -> list[tuple[int, bytes]]:
+    """Up to three annotated frames (first, middle, last valid) with the water mask, marker mask and water line."""
+    by_index = {m.frame_index: m for m in measurement.frame_masks}
+    rows = {p.frame_index: p.waterline_row for p in measurement.watch.points if p.valid}
+    wanted = set(_pick_overlay_frames(sorted(rows)))
+    out: list[tuple[int, bytes]] = []
+    if not wanted:
+        return out
+    for index, frame in iter_frames(video, suffix):
+        if index in wanted:
+            masks = by_index.get(index)
+            out.append((index, render_overlay(frame, masks.water if masks else None, masks.marker if masks else None, rows.get(index))))
+        if len(out) == len(wanted):
+            break
+    return out
+
+
 def register_watch_routes(app: FastAPI, deps: AppDependencies) -> None:
     @app.post("/watch/clip")
     def watch_clip(
@@ -59,18 +76,10 @@ def register_watch_routes(app: FastAPI, deps: AppDependencies) -> None:
             video, deps.video_segmenter, marker_height_cm, water_prompt=water, marker_prompt=marker, total_frames=info.frames
         )
         watch = measurement.watch
-        by_index = {m.frame_index: m for m in measurement.frame_masks}
-        rows = {p.frame_index: p.waterline_row for p in watch.points if p.valid}
-        wanted = set(_pick_overlay_frames(sorted(rows)))
-        overlays = []
-        if wanted:
-            for index, frame in iter_frames(video, suffix):
-                if index in wanted:
-                    masks = by_index.get(index)
-                    png = render_overlay(frame, masks.water if masks else None, masks.marker if masks else None, rows.get(index))
-                    overlays.append({"frame": index, "png_base64": base64.b64encode(png).decode()})
-                if len(overlays) == len(wanted):
-                    break
+        overlays = [
+            {"frame": index, "png_base64": base64.b64encode(png).decode()}
+            for index, png in render_overlays(video, suffix, measurement)
+        ]
 
         billed = measurement.billed_frames
         rise = None if watch.rise_cm is None else round(watch.rise_cm, 1)

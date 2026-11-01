@@ -81,6 +81,7 @@ class Proposal:
     reasons: Sequence[str]
     context: HazardContext  # snapshot the tier was evaluated on
     households_targeted: int = 0
+    tier_config: TierConfig | None = None  # thresholds the tier was evaluated with
     id: str = ""
     status: str = "awaiting_operator"  # awaiting_operator | approved | rejected | dispatched
     requires_operator_confirmation_id: bool = True
@@ -168,7 +169,7 @@ def approve_proposal(
             raise ProposalError(f"proposal is already {proposal.status}")
         if not confirmation:
             raise ProposalError("an operator confirmation id is required to approve a dispatch")
-        evaluation = evaluate_alert_tier(replace(proposal.context, operator_confirmed=True), static_risk, config)
+        evaluation = evaluate_alert_tier(replace(proposal.context, operator_confirmed=True), static_risk, config or proposal.tier_config)
         if evaluation.tier is not proposal.tier:
             raise ProposalError(
                 f"the conditions changed: the rules now return {evaluation.tier.value}, not {proposal.tier.value}"
