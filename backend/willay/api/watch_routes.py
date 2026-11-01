@@ -1,4 +1,8 @@
-"""POST /watch/clip: river-watcher clip in, deterministic water-rise measurement out."""
+"""POST /watch/clip: river-watcher clip in, deterministic water-rise measurement out.
+
+POST /watch/demo-clip analyses the bundled FAKE rising-water clip offline (recorded SAM output when a recording exists,
+otherwise the colour-threshold stand-in) so the console can show the watcher without any network call.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +11,10 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
-from willay.adapters.clip_media import iter_frames, probe_clip, render_overlay
+from willay.adapters.clip_media import ColorSegmenter, iter_frames, probe_clip, render_overlay
 from willay.adapters.meta_usage import SAM_VIDEO_PER_FRAME
 from willay.api.dependencies import AppDependencies
-from willay.application.watch_clip import DEFAULT_MARKER_PROMPT, DEFAULT_WATER_PROMPT, measure_clip
+from willay.application.watch_clip import DEFAULT_MARKER_PROMPT, DEFAULT_WATER_PROMPT, ClipMeasurement, measure_clip
 
 MAX_CLIP_SECONDS = 15.0
 MAX_CLIP_BYTES = 40_000_000
@@ -41,6 +45,45 @@ def render_overlays(video: bytes, suffix: str, measurement) -> list[tuple[int, b
     return out
 
 
+def watch_payload(
+    video: bytes, suffix: str, info, measurement: ClipMeasurement, marker_height_cm: float, water: str, marker: str, **extra: object
+) -> dict:
+    watch = measurement.watch
+    overlays = [{"frame": index, "png_base64": base64.b64encode(png).decode()} for index, png in render_overlays(video, suffix, measurement)]
+    billed = measurement.billed_frames
+    rise = None if watch.rise_cm is None else round(watch.rise_cm, 1)
+    return {
+        "rise_cm": rise,
+        "confidence": watch.confidence,
+        "cm_per_px": None if watch.cm_per_px is None else round(watch.cm_per_px, 4),
+        "marker_px": watch.marker_px,
+        "marker_height_cm": marker_height_cm,
+        "valid_frames": watch.valid_frames,
+        "total_frames": watch.total_frames,
+        "reasons": list(watch.reasons),
+        "clip": {"seconds": round(info.duration_s, 2), "fps": info.fps, "width": info.width, "height": info.height},
+        "prompts": {"water": water, "marker": marker},
+        "series": [
+            {
+                "frame": p.frame_index,
+                "valid": p.valid,
+                "rise_cm": None if p.rise_cm is None else round(p.rise_cm, 1),
+                "visible_cm": None if p.visible_cm is None else round(p.visible_cm, 1),
+            }
+            for p in watch.points
+        ],
+        "overlays": overlays,
+        "billed_frames": billed,
+        "estimated_cost_usd": None if billed is None else round(billed * SAM_VIDEO_PER_FRAME, 6),
+        "tier_input": {"water_rise_cm": rise},
+        "note": (
+            "Deterministic geometry on SAM masks: a measurement, not an alert. Tiers come only from the domain rules "
+            "(/alerts/evaluate); this value can be passed as water_rise_cm."
+        ),
+        **extra,
+    }
+
+
 def register_watch_routes(app: FastAPI, deps: AppDependencies) -> None:
     @app.post("/watch/clip")
     def watch_clip(
@@ -49,6 +92,7 @@ def register_watch_routes(app: FastAPI, deps: AppDependencies) -> None:
         no_people_confirmed: Annotated[bool, Form(description="Must be true: clips are sent to a third-party model")] = False,
         water_prompt: Annotated[str | None, Form()] = None,
         marker_prompt: Annotated[str | None, Form()] = None,
+        register_clip: Annotated[bool, Form(description="Also keep the clip so the Watcher agent can measure it")] = False,
     ) -> dict:
         if deps.video_segmenter is None:
             raise HTTPException(status_code=503, detail="the segmentation model is not configured (set WILLAY_META_ENABLED=1 and META_API_KEY)")
@@ -75,40 +119,23 @@ def register_watch_routes(app: FastAPI, deps: AppDependencies) -> None:
         measurement = measure_clip(
             video, deps.video_segmenter, marker_height_cm, water_prompt=water, marker_prompt=marker, total_frames=info.frames
         )
-        watch = measurement.watch
-        overlays = [
-            {"frame": index, "png_base64": base64.b64encode(png).decode()}
-            for index, png in render_overlays(video, suffix, measurement)
-        ]
+        extra: dict = {"analyzer": "sam-3.1"}
+        if register_clip:
+            extra["clip_id"] = deps.clips.add(f"clip-{len(deps.clips.ids()) + 1}", video, content_type)
+        return watch_payload(video, suffix, info, measurement, marker_height_cm, water, marker, **extra)
 
-        billed = measurement.billed_frames
-        rise = None if watch.rise_cm is None else round(watch.rise_cm, 1)
-        return {
-            "rise_cm": rise,
-            "confidence": watch.confidence,
-            "cm_per_px": None if watch.cm_per_px is None else round(watch.cm_per_px, 4),
-            "marker_px": watch.marker_px,
-            "marker_height_cm": marker_height_cm,
-            "valid_frames": watch.valid_frames,
-            "total_frames": watch.total_frames,
-            "reasons": list(watch.reasons),
-            "clip": {"seconds": round(info.duration_s, 2), "fps": info.fps, "width": info.width, "height": info.height},
-            "prompts": {"water": water, "marker": marker},
-            "series": [
-                {
-                    "frame": p.frame_index,
-                    "valid": p.valid,
-                    "rise_cm": None if p.rise_cm is None else round(p.rise_cm, 1),
-                    "visible_cm": None if p.visible_cm is None else round(p.visible_cm, 1),
-                }
-                for p in watch.points
-            ],
-            "overlays": overlays,
-            "billed_frames": billed,
-            "estimated_cost_usd": None if billed is None else round(billed * SAM_VIDEO_PER_FRAME, 6),
-            "tier_input": {"water_rise_cm": rise},
-            "note": (
-                "Deterministic geometry on SAM masks: a measurement, not an alert. Tiers come only from the domain rules "
-                "(/alerts/evaluate); this value can be passed as water_rise_cm."
-            ),
-        }
+    @app.post("/watch/demo-clip")
+    def watch_demo_clip() -> dict:
+        from willay.adapters.replay_models import ReplaySegmenter
+        from willay.application.orchestration.demo_script import DEMO_MARKER_CM, DEMO_WATER_PROMPT
+        from willay.api.demo_routes import demo_clip_bytes
+
+        video = demo_clip_bytes()
+        info = probe_clip(video, ".mp4")
+        recorded = (deps.demo_recording or {}).get("segmentations")
+        segmenter = ReplaySegmenter(recorded) if recorded else ColorSegmenter()
+        analyzer = "offline: recorded SAM 3.1 output on the fake clip" if recorded else "offline: colour-threshold stand-in (not SAM)"
+        measurement = measure_clip(
+            video, segmenter, DEMO_MARKER_CM, water_prompt=DEMO_WATER_PROMPT, marker_prompt=DEFAULT_MARKER_PROMPT, total_frames=info.frames
+        )
+        return watch_payload(video, ".mp4", info, measurement, DEMO_MARKER_CM, DEMO_WATER_PROMPT, DEFAULT_MARKER_PROMPT, analyzer=analyzer, synthetic_clip=True)

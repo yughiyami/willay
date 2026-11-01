@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Literal, Sequence
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from willay.adapters.clip_media import ColorSegmenter
@@ -239,6 +240,13 @@ def register_demo_routes(
     def demo_run(request: DemoRunIn) -> dict:
         trace = runner.start(request.mode, request.auto_confirm)
         return {"run_id": trace.run_id, "mode": request.mode, "auto_confirm": request.auto_confirm}
+
+    @app.get("/demo/card")
+    def demo_card() -> Response:
+        card = (deps.demo_recording or {}).get("card_png_base64")
+        if not card:
+            raise HTTPException(status_code=404, detail="no recorded card")
+        return Response(content=base64.b64decode(card), media_type="image/png")
 
     @app.get("/demo/status")
     def demo_status() -> dict:

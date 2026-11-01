@@ -240,6 +240,16 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             )
         return dict(deps.district_collection)
 
+    @app.get("/enfen/timeline")
+    def enfen_timeline() -> dict:
+        return {
+            "source": deps.official_source,
+            "bulletins": [
+                {"date": b.date.isoformat(), "number": b.number, "alert_status": b.alert_status.value, "magnitude": b.magnitude.value}
+                for b in sorted(deps.enfen_bulletins, key=lambda b: b.date)
+            ],
+        }
+
     @app.get("/learned-model")
     def learned_model() -> dict:
         if deps.learned_model is None:

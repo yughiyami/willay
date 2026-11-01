@@ -114,6 +114,7 @@ class AppDependencies:
     usage_log: object | None = None  # the Meta usage log (spend and budget), when live Meta is wired
     rain_context: Mapping | None = None
     tier_config: TierConfig | None = None
+    enfen_bulletins: Sequence = ()
     demo_recording: Mapping | None = None  # recorded orchestrator turns for the offline demo (scripts/record_demo.py)
     demo_pace_s: float = 0.6  # pause between replayed model turns so the audience can follow the trace
     demo_confirm_timeout_s: float = 900.0  # how long the demo waits for the operator's click
@@ -364,6 +365,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         district_collection=_district_collection(world, data, learned),
         learned_model=learned,
         rain_context=_rain_context(data),
+        enfen_bulletins=tuple(bulletins),
         backtest_results=backtest_results,
         reviewed_templates=reviewed_templates_from_env(env),
         derived_dir=data.derived(),

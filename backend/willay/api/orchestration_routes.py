@@ -20,7 +20,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from willay.adapters.clip_media import probe_clip
-from willay.adapters.traced_models import TracedAgentModel, TracedImage, TracedSegmenter
+from willay.adapters.traced_models import TracedAgentModel, TracedImage, TracedSegmenter, TracedTranscriber
 from willay.api.alert_routes import execute_dispatch
 from willay.api.dependencies import AppDependencies
 from willay.api.watch_routes import MAX_CLIP_BYTES, MAX_CLIP_SECONDS, render_overlays
@@ -30,7 +30,7 @@ from willay.application.orchestration.runtime import (
     ProposalError,
     approve_proposal,
 )
-from willay.application.orchestration.trace import RunTrace, use_trace
+from willay.application.orchestration.trace import RunTrace, use_agent, use_trace
 from willay.application.rank_sites import RankedSite
 from willay.domain.entities import AlertTier, EnfenMagnitude, HazardContext, RainfallAnomaly, SenamhiLevel
 
@@ -188,6 +188,30 @@ def register_orchestration_routes(
             future.result(timeout=WAIT_TIMEOUT_S)
             return {"run_id": trace.run_id, "status": trace.status, "result": trace.result, "totals": trace.totals()}
         return {"run_id": trace.run_id, "status": trace.status}
+
+    @app.post("/agent/run-voice")
+    def agent_run_voice(
+        audio: Annotated[UploadFile, File(description="WAV: mono, 16-bit PCM, 16 or 24 kHz, at most 10 minutes")],
+        clip_id: Annotated[str | None, Form()] = None,
+    ) -> dict:
+        if deps.agent_model is None or deps.transcriber is None:
+            raise HTTPException(status_code=503, detail="voice is not configured (set WILLAY_META_ENABLED=1 and META_API_KEY)")
+        data = audio.file.read(5_000_001)
+        if len(data) > 5_000_000:
+            raise HTTPException(status_code=413, detail="audio is larger than 5 MB")
+        trace = deps.traces.create()
+        try:
+            with use_trace(trace), use_agent("planner"):
+                transcript = TracedTranscriber(deps.transcriber).transcribe(data, "es").strip()
+        except Exception as exc:  # unsupported audio, budget or API error: the run never starts
+            trace.finish("failed", {"error": f"{type(exc).__name__}: {str(exc)[:160]}"})
+            status = 415 if type(exc).__name__ == "UnsupportedAudioError" else 429 if type(exc).__name__ == "BudgetExceededError" else 502
+            raise HTTPException(status_code=status, detail=f"transcription failed: {exc}") from exc
+        if not transcript:
+            trace.finish("failed", {"error": "no speech was detected"})
+            raise HTTPException(status_code=422, detail="no speech was detected in the recording")
+        _EXECUTOR.submit(run_to_trace, make_orchestrator(), trace, transcript, None, clip_id)
+        return {"run_id": trace.run_id, "transcript": transcript}
 
     def get_trace(run_id: str) -> RunTrace:
         trace = deps.traces.get(run_id)
