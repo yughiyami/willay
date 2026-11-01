@@ -24,6 +24,7 @@ from willay.application.compose_alert_message import HOUSEHOLD_LANGUAGE, AlertMe
 from willay.application.evacuation_card import CardRequest, build_card
 from willay.application.evaluate_alert_tier import evaluate_alert_tier
 from willay.application.operator_agent import GUARD_FALLBACK_ES, LAYERS, OperatorToolkit, guard_tier_claims
+from willay.application.public_signals import describe_signals, signal_count_for_site, site_districts
 from willay.application.orchestration.runtime import (
     OrchestratorConfig,
     OrchestratorServices,
@@ -33,6 +34,7 @@ from willay.application.orchestration.trace import RunTrace, summarize_args, use
 from willay.application.rank_sites import RankedSite
 from willay.application.watch_clip import measure_clip
 from willay.domain.entities import AlertTier, HazardContext
+from willay.domain.signals import MIN_CORROBORATING_SIGNALS, corroborate, normalize_place
 from willay.domain.tiers import TierEvaluation
 from willay.ports.agent import AgentModelPort, AgentTurn
 from willay.ports.templates import TemplateNotAvailable
@@ -81,6 +83,13 @@ HAZARD_TOOLS = [
     _tool("get_rain_context", "Recent CHIRPS rainfall accumulation over the basin (satellite estimate, 5 km)."),
     _tool("get_backtest_summary", "District backtest (2017, 2023): AUC with confidence intervals for the static score, CENEPRED, the ensemble and the learned model, with caveats."),
     _tool("get_learned_risk", "Learned district propensity (logistic regression trained on 2003-2016) and its rank.", {"district": {"type": "string"}}, ["district"]),
+    _tool(
+        "get_public_signals",
+        "Unverified public reports (news and public web pages of the last 72 hours) of huaicos, landslides, overflows, tailings "
+        "spills or floods, by district: page count, latest time and source links. Context only: they never change an alert tier. "
+        "Give a district (name or ubigeo) or a site_id; with neither you get the basin overview.",
+        {"district": {"type": "string"}, **_SITE},
+    ),
 ]
 WATCHER_TOOLS = [
     _tool("list_clips", "Ids of the river-watcher clips available in this session."),
@@ -155,7 +164,9 @@ INSTRUCTIONS: Mapping[str, str] = {
         "especialistas necesarios y resume el resultado para el operador en máximo 5 frases. " + _COMMON_RULES
     ),
     HAZARD: "Eres el Analista de Peligro de Willay Relaves. Analizas riesgo de relaves y distritos, contexto ENFEN/CHIRPS/SENAMHI y el backtest. "
-    "Explica con honestidad las limitaciones. Máximo 4 frases. " + _COMMON_RULES,
+    "Explica con honestidad las limitaciones. Las señales públicas (get_public_signals) son noticias y páginas web no verificadas: "
+    "preséntalas siempre como «señales públicas no verificadas», con su enlace, y nunca como un nivel de alerta ni como confirmación. "
+    "Máximo 4 frases. " + _COMMON_RULES,
     WATCHER: "Eres el Vigía de Willay Relaves. Mides la subida del río en un clip con la herramienta measure_clip (SAM 3.1). "
     "Informa la subida en cm, la confianza y cualquier razón de baja calidad; es una medición, no una alerta. Máximo 3 frases. " + _COMMON_RULES,
     DISPATCHER: "Eres el Despachador de Willay Relaves. Solo preparas propuestas con prepare_dispatch; no existe herramienta de envío. "
@@ -239,6 +250,8 @@ def _result_summary(name: str, result: Mapping) -> str:
         return f"{result.get('agent')} answered {len(str(result.get('answer_es', '')))} chars"
     if name == "rank_sites":
         return f"{len(result.get('sites', []))} sites"
+    if name == "get_public_signals":
+        return f"mode={result.get('mode')} districts={len(result.get('districts', []))} pages={result.get('total_pages', 0)}"
     keys = ", ".join(list(result)[:6])
     return f"keys: {keys}"
 
@@ -394,8 +407,13 @@ class Orchestrator:
     def _evaluate(self, state: RunState, ranked: RankedSite) -> tuple[TierEvaluation, HazardContext]:
         context = state.context()
         evaluation = evaluate_alert_tier(context, ranked.static_risk, self._s.tier_config)
+        # Unverified public signals may add one reason to an ATTENTION result; `corroborate` cannot change the tier.
+        evaluation = corroborate(evaluation, self._signal_count(ranked))
         state.tiers_returned.add(evaluation.tier.value)
         return evaluation, context
+
+    def _signal_count(self, ranked: RankedSite) -> int:
+        return signal_count_for_site(self._s.signals, ranked, self._s.settlements())  # type: ignore[arg-type]
 
     def _operator_toolkit(self, state: RunState) -> OperatorToolkit:
         return OperatorToolkit(self._s.ranked, state.context(), districts=self._s.districts)
@@ -521,6 +539,28 @@ class Orchestrator:
         if not learned:
             return {"available": False, "note": "no learned model for this data mode"}, []
         return {"district": feature["properties"].get("name"), **learned, "note": "relative propensity for a typical Jan-Apr season; not calibrated for El Niño seasons"}, []
+
+    def _tool_get_public_signals(self, state: RunState, agent: str, args: Mapping) -> tuple[dict, list]:
+        hub = self._s.signals
+        site_id = args.get("site_id")
+        if not site_id:
+            return describe_signals(hub, str(args.get("district") or "").strip() or None), []  # type: ignore[arg-type]
+        ranked = self._find(site_id)
+        if ranked is None:
+            return {"error": f"unknown site '{site_id}'"}, []
+        result = describe_signals(hub)  # type: ignore[arg-type]
+        if result["available"]:
+            ubigeos, names = site_districts(ranked, self._s.settlements())  # type: ignore[arg-type]
+            wanted = {normalize_place(n) for n in names}
+            result["districts"] = [d for d in result["districts"] if d["ubigeo"] in ubigeos or normalize_place(d["district"]) in wanted]
+            count = self._signal_count(ranked)
+            result.update(
+                site_id=ranked.site.id,
+                pages_for_site=count,
+                corroborates_attention=count >= MIN_CORROBORATING_SIGNALS,
+                scope="the site's district and the districts its flow path reaches",
+            )
+        return result, []
 
     # --- watcher tools ----------------------------------------------------------------------------------------------------
 

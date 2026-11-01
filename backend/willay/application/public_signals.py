@@ -487,6 +487,68 @@ class PublicSignalsHub:
         }
 
 
+# --- reading signals for a site ----------------------------------------------------------------------------------------
+
+
+def site_districts(ranked, settlements: Sequence[Settlement]) -> tuple[set[str], set[str]]:
+    """UBIGEOs and district names that count as 'near' a site: its own district and those of the settlements its flow path reaches."""
+    reached = {c.settlement_id for c in ranked.exposure.contributions} if ranked.exposure else set()
+    near = [s for s in settlements if s.id in reached]
+    ubigeos = {s.ubigeo for s in near if s.ubigeo}
+    names = {s.district for s in near if s.district}
+    if ranked.site.district:
+        names.add(ranked.site.district)
+    return ubigeos, names
+
+
+def signal_count_for_site(hub: PublicSignalsHub | None, ranked, settlements: Sequence[Settlement]) -> int:
+    """Distinct public pages reporting an event in the site's district or downstream of it (0 when signals are off)."""
+    if hub is None or hub.mode == "off":
+        return 0
+    ubigeos, names = site_districts(ranked, settlements)
+    return hub.count_for(ubigeos, names)
+
+
+TOOL_NOTE = (
+    "Unverified public reports found on the open web (news and public pages, last 72 hours). They are context for the operator: "
+    "they cannot change an alert tier or start a dispatch, and they never replace the official SENAMHI, INDECI and ENFEN alerts."
+)
+
+
+def describe_signals(hub: PublicSignalsHub | None, district: str | None = None, max_districts: int = 10, max_sources: int = 5) -> dict:
+    """The tool view of the hub: districts with counts and links, never any text."""
+    if hub is None or hub.mode == "off":
+        return {
+            "available": False,
+            "mode": "off",
+            "label": SIGNAL_LABEL_ES,
+            "districts": [],
+            "note": "Public signals are not enabled (WILLAY_SIGNALS_ENABLED=0). Nothing was searched; do not infer any.",
+        }
+    snapshot = hub.snapshot(district)
+    districts = [
+        {
+            "district": d["district"],
+            "ubigeo": d["ubigeo"],
+            "count": d["count"],
+            "latest": d["latest"],
+            "sources": [dict(source) for source in d["sources"][:max_sources]],
+        }
+        for d in snapshot["districts"][:max_districts]
+    ]
+    return {
+        "available": True,
+        "mode": snapshot["mode"],
+        "simulated": snapshot["simulated"],
+        "label": SIGNAL_LABEL_ES,
+        "window_hours": SIGNAL_WINDOW_HOURS,
+        "districts": districts,
+        "total_pages": sum(d["count"] for d in snapshot["districts"]),
+        "refreshed_at": snapshot["refreshed_at"],
+        "note": TOOL_NOTE,
+    }
+
+
 # --- refresh ----------------------------------------------------------------------------------------------------------
 
 

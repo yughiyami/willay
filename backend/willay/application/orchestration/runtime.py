@@ -209,3 +209,4 @@ class OrchestratorServices:
     budget_remaining: Callable[[], float | None] = lambda: None
     clip_probe: Callable[[bytes, str], int | None] | None = None  # (video, suffix) -> total frames
     overlay_renderer: Callable[[bytes, str, object], list[tuple[int, bytes]]] | None = None  # (video, suffix, measurement)
+    signals: object | None = None  # PublicSignalsHub: unverified public reports, context only (never a trigger)
