@@ -7,6 +7,7 @@ Reproduce (reads `WILLAY_DATA_DIR`, default `../willay-data`; writes only to `de
 .venv/Scripts/python -I scripts/build_site_features.py
 .venv/Scripts/python -I scripts/build_district_features.py
 .venv/Scripts/python -I scripts/run_backtest.py     # -> derived/backtest_results.json
+.venv/Scripts/python -I scripts/train_risk_model.py # -> derived/learned_model.json (see Learned model)
 ```
 
 Served by `GET /backtest?event=2017|2023` and `POST /backtest?event=...` (the POST recomputes the top-k
@@ -117,6 +118,56 @@ Lead time in days (median, p25-p75, n districts with a lead / n without), by gat
   evidence that the combination generalises, and remember its CENEPRED half is a scenario, not a hindcast.
 - Top-k capture is bounded by the high base rate; precision and AUC are more informative here.
 - Only two events and 78 districts: intervals are wide and metric differences below about 0.1 AUC are not distinguishable.
+
+## Learned model (temporal split): an honest negative result
+
+`scripts/train_risk_model.py` trains a small tabular model on the same static district inputs and tests it on later seasons
+(`backend/willay/adapters/learned_risk.py`, numpy, unit-tested; output `derived/learned_model.json`, served by `GET /learned-model`
+and as `learned` inside `GET /districts`).
+
+- **Rows and labels.** One row per (district, season): 78 districts x 14 training seasons (Jan-Apr 2003-2016) = 1,092 rows.
+  Label: at least one INDECI rain-driven emergency (same hazard types as above) in the season. **Temporal split**: train on 2003-2016
+  only; test on 2017 (Jan-Apr) and 2023 (Mar), with exactly the labels used by the backtest above. The code refuses a split where a
+  training season is not strictly before every test season.
+- **Features** (the inputs of the static score): INGEMMET high-susceptibility share, mean slope, log(1 + exposed population),
+  log(1 + tailings upstream). The exposure feature uses ANA critical points designated before 2017. Imputation (median), scaling and
+  the L2 strength are fitted on the training seasons only (L2 chosen by leave-one-season-out AUC over {0.1, 1, 10, 100}; 10 won).
+- **Model.** L2 logistic regression (Newton / IRLS, intercept not penalised). No deep model: see below.
+
+| Event | Model | AUC [95% bootstrap CI] |
+|---|---|---|
+| 2017 | **Learned (L2 logistic, train 2003-2016)** | **0.55** [0.41, 0.68] |
+| 2017 | Willay static (a-priori weights) | 0.93 [0.86, 0.98] |
+| 2017 | CENEPRED (mean) | 0.77 [0.66, 0.87] |
+| 2017 | Ensemble (static + CENEPRED) | 0.90 [0.80, 0.97] |
+| 2017 | Ensemble (learned + CENEPRED) | 0.71 [0.57, 0.82] |
+| 2023 | **Learned (L2 logistic, train 2003-2016)** | **0.55** [0.42, 0.69] |
+| 2023 | Willay static (a-priori weights) | 0.63 [0.49, 0.75] |
+| 2023 | CENEPRED (mean) | 0.80 [0.70, 0.89] |
+| 2023 | Ensemble (static + CENEPRED) | 0.75 [0.63, 0.85] |
+| 2023 | Ensemble (learned + CENEPRED) | 0.72 [0.60, 0.84] |
+
+**Reading it honestly.**
+
+- The learned model does **not** beat the a-priori static score in 2017 (0.55 vs 0.93, intervals do not overlap) nor CENEPRED in 2023
+  (0.55 vs 0.80); against the static score in 2023 it is about equal (0.55 vs 0.63, overlapping intervals). Its own interval includes
+  0.5 in both events: no demonstrated skill on the temporal split.
+- **Why.** The label distribution shifts hard between train and test: only 2-14 of 78 districts report a rain-driven emergency in an
+  ordinary Jan-Apr season (training base rate 9%), against 52 of 78 in 2017 and 48 of 78 in 2023. Ordinary seasons are
+  reporting-driven (populous districts report), so the fitted coefficients lean on exposed population (+0.52 standardised) and ignore
+  susceptibility (-0.01) and slope (-0.06). Those are exactly the inputs that separate districts in an El Nino season. The model learned
+  "who reports" in normal years, not "who is hit" in extreme years.
+- **Calibration.** The mean predicted probability is 0.09 in both test seasons while the observed rate is 0.67 and 0.62 (Brier 0.54 and
+  0.51). So the per-district `probability` shown in the console is a **relative propensity for a typical season**, not a probability for
+  an El Nino season; the console shows it with its percentile rank and the label `typical_season_propensity`. We did not rescale it with
+  test-season base rates (that would be leakage).
+- **No deep learning, on purpose.** There are 78 districts, four features and about 1,100 strongly dependent rows (the same static
+  features repeat in every season), with a regime shift between train and test. A neural network would have nothing more to learn than a
+  linear model on this evidence and would overfit label noise; the failure above is a data/regime problem, not a model-capacity problem,
+  so a bigger model could not fix it and a "better" AUC would be unfalsifiable. We therefore ship the linear baseline and the negative
+  result, and keep the a-priori static score as the primary district score.
+- What would change the conclusion: event-dated landslide inventories with coordinates, SENAMHI/CHIRPS covariates per season (so the model
+  can learn the interaction "wet season x susceptibility"), and more El Nino seasons than two.
 
 ## Limitations
 

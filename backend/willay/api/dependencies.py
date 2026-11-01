@@ -36,7 +36,7 @@ from willay.adapters.reviewed_templates import FileReviewedTemplates
 from willay.application.district_backtest import STANDARD_EVENTS
 from willay.application.run_backtest import BacktestDataset
 from willay.domain.dispatch import Household
-from willay.domain.district_score import DEFAULT_WEIGHTS, DistrictFeatures, score_districts
+from willay.domain.district_score import DEFAULT_WEIGHTS, DistrictFeatures, percentile_ranks, score_districts
 from willay.domain.entities import HazardContext, RainfallAnomaly
 from willay.domain.exposure import ExposureConfig
 from willay.ports.agent import AgentModelPort, StructuredExtractionPort
@@ -78,6 +78,7 @@ class AppDependencies:
     pasivos: Sequence = ()
     district_collection: Mapping | None = None
     backtest_results: Mapping | None = None
+    learned_model: Mapping | None = None
     reviewed_templates: object | None = None
     # Live Meta capabilities. None means "not configured": the matching endpoints answer 503.
     video_segmenter: VideoSegmentationPort | None = None
@@ -143,7 +144,17 @@ def _verified_enfen_ingest(data: DataDir, bulletins) -> RainfallAnomaly | None:
         return None
 
 
-def _district_collection(world, data: DataDir) -> Mapping | None:
+def _learned_model(data: DataDir) -> Mapping | None:
+    path = data.derived("learned_model.json")
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+
+
+def _district_collection(world, data: DataDir, learned: Mapping | None = None) -> Mapping | None:
     features_path = data.derived("district_features.json")
     if not features_path.exists():
         return None
@@ -184,6 +195,9 @@ def _district_collection(world, data: DataDir) -> Mapping | None:
             for e in inside:
                 counts[key][e.ubigeo] = counts[key].get(e.ubigeo, 0) + 1
 
+    learned_probability = {u: d["probability"] for u, d in (learned or {}).get("districts", {}).items()}
+    learned_rank = {u: r for u, r in zip(sorted(learned_probability), percentile_ranks([learned_probability[u] for u in sorted(learned_probability)]))}
+
     features = []
     for ubigeo, feats in district_features.items():
         score = scores[ubigeo]
@@ -209,6 +223,13 @@ def _district_collection(world, data: DataDir) -> Mapping | None:
                         "mm_risk_value": c.mm_risk_value,
                         "mm_risk_level": c.mm_risk_level,
                         "population_2017": c.population_2017,
+                    },
+                    "learned": None
+                    if ubigeo not in learned_probability
+                    else {
+                        "probability": learned_probability[ubigeo],
+                        "percentile_rank": learned_rank[ubigeo],
+                        "scope": "typical_season_propensity",
                     },
                     "emergencies": {
                         key: {
@@ -251,6 +272,7 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
         )
 
     households = load_households(environ=env)
+    learned = _learned_model(data)
     results_path = data.derived("backtest_results.json")
     backtest_results = json.loads(results_path.read_text(encoding="utf-8")) if results_path.exists() else None
 
@@ -279,7 +301,8 @@ def real_dependencies(data: DataDir | None = None, environ: Mapping[str, str] | 
             for site_id, features in world.site_features.items()
         },
         pasivos=world.pasivos,
-        district_collection=_district_collection(world, data),
+        district_collection=_district_collection(world, data, learned),
+        learned_model=learned,
         backtest_results=backtest_results,
         reviewed_templates=reviewed_templates_from_env(env),
         derived_dir=data.derived(),

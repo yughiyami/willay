@@ -237,6 +237,12 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             )
         return dict(deps.district_collection)
 
+    @app.get("/learned-model")
+    def learned_model() -> dict:
+        if deps.learned_model is None:
+            raise HTTPException(status_code=404, detail="no learned model (run scripts/train_risk_model.py)")
+        return {k: v for k, v in deps.learned_model.items() if k != "districts"}
+
     @app.post("/alerts/evaluate")
     def evaluate_alert(request: EvaluateAlertIn) -> dict:
         ranked = find_ranked(request.site_id) if request.site_id is not None else None
