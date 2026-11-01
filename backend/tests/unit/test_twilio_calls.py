@@ -23,7 +23,7 @@ from willay.domain.dispatch import ResponseKind
 from willay.domain.entities import AlertTier
 from willay.ports.calls import CallError, CallNotAllowed
 
-SID, TOKEN, FROM = "ACtest0000000000000000000000000000", "token-not-real", "+15005550006"
+SID, TOKEN, FROM = ("AC" + "0123456789abcdef" * 2), "token-not-real", "+15005550006"
 BASE = "https://willay.example.test"
 ALLOWED = "+51900000001"
 ENV = {
@@ -61,7 +61,7 @@ def make(fake=None, **kwargs):
     fake = fake or FakeTwilio()
     config = TwilioConfig.from_env(ENV)
     client = httpx.Client(transport=httpx.MockTransport(fake))
-    adapter = TwilioCallAdapter(config, client=client, sleep=lambda s: None, poll_interval_s=0.0, **kwargs)
+    adapter = TwilioCallAdapter(config, client=client, poll_interval_s=0.0, **kwargs)
     return adapter, fake
 
 
@@ -192,7 +192,7 @@ def test_a_timeout_hangs_the_call_up_and_counts_as_no_answer():
     config = TwilioConfig.from_env({**ENV, "WILLAY_CALL_DTMF_TIMEOUT_S": "30"})
     fake = FakeTwilio(statuses=("in-progress",))
     adapter = TwilioCallAdapter(
-        config, client=httpx.Client(transport=httpx.MockTransport(fake)), sleep=lambda s: None, clock=lambda: float(next(clock)), poll_interval_s=0.0
+        config, client=httpx.Client(transport=httpx.MockTransport(fake)), clock=lambda: float(next(clock)), poll_interval_s=0.0
     )
     assert adapter.call(ALLOWED, AlertTier.ATTENTION).outcome is ResponseKind.NO_ANSWER
     assert any(r.method == "POST" and r.url.path.endswith("/Calls/CA123.json") for r in fake.requests)

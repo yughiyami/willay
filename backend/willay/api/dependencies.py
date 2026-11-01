@@ -29,6 +29,7 @@ from willay.adapters.geodata.timeseries import load_chirps_csv, load_enfen_csv
 from willay.adapters.households_fixture import load_households
 from willay.adapters.in_memory import InMemorySiteRepository
 from willay.adapters.simulated_call import SimulatedCallAdapter
+from willay.adapters.twilio_calls import MissingTwilioConfigError, TwilioCallAdapter
 from willay.adapters.web_whatsapp import WebWhatsAppSimulator
 from willay.adapters.safe_points_file import FILE_NAME as SAFE_POINTS_FILE
 from willay.adapters.safe_points_file import load_proposed_safe_points
@@ -63,6 +64,7 @@ ENV_ANOMALY = "WILLAY_SEASONAL_ANOMALY"
 ENV_TEMPLATES_DIR = "WILLAY_REVIEWED_TEMPLATES_DIR"
 ENV_META_ENABLED = "WILLAY_META_ENABLED"
 ENV_CALLS_ENABLED = "WILLAY_CALLS_ENABLED"
+ENV_CALLS_PROVIDER = "WILLAY_CALLS_PROVIDER"  # simulated | asterisk (default when enabled) | twilio
 DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "reviewed"
 REAL_DISCLAIMER = (
     "Real open data (INGEMMET, ANA, OSM, Copernicus DEM). Tailings risk attributes are sparse, water intakes are "
@@ -394,13 +396,32 @@ def attach_meta_from_env(deps: AppDependencies, environ: Mapping[str, str] | Non
 
 
 def attach_calls_from_env(deps: AppDependencies, environ: Mapping[str, str] | None = None) -> AppDependencies:
-    """Real phone calls through Asterisk ARI, only when WILLAY_CALLS_ENABLED=1 AND Asterisk is fully configured.
+    """Real phone calls, only when WILLAY_CALLS_ENABLED=1 AND the chosen provider is fully configured.
 
-    Anything else keeps the simulated adapter (no call is ever placed). Even with real calls, the adapter refuses
-    numbers outside WILLAY_CALL_ALLOWLIST. Only variable NAMES are ever reported, never values.
+    WILLAY_CALLS_PROVIDER picks `asterisk` (default), `twilio` or `simulated`. Anything else keeps the simulated adapter
+    (no call is ever placed). Even with real calls, the adapters refuse numbers outside WILLAY_CALL_ALLOWLIST. Only
+    variable NAMES are ever reported, never values.
     """
     env = os.environ if environ is None else environ
     if env.get(ENV_CALLS_ENABLED, "0").strip() != "1":
+        return deps
+    provider = (env.get(ENV_CALLS_PROVIDER) or "asterisk").strip().lower()
+    if provider == "simulated":
+        return deps
+    if provider == "twilio":
+        try:
+            twilio = TwilioCallAdapter.from_env(env)
+        except MissingTwilioConfigError as missing:
+            deps.calls_mode = f"simulated (calls enabled but Twilio is not configured: {missing})"
+            return deps
+        except ValueError as invalid:
+            deps.calls_mode = f"simulated (calls enabled but the Twilio configuration is invalid: {invalid})"
+            return deps
+        deps.calls = twilio
+        deps.calls_mode = f"twilio (allow-list: {len(twilio.allowlist)} number(s))"
+        return deps
+    if provider != "asterisk":
+        deps.calls_mode = f"simulated (unknown {ENV_CALLS_PROVIDER} '{provider}': use simulated, asterisk or twilio)"
         return deps
     try:
         adapter = AsteriskAriAdapter.from_env(env)
