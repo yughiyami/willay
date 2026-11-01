@@ -38,14 +38,13 @@ from willay.domain.signals import (
     normalize_place,
 )
 from willay.ports.agent import StructuredExtractionPort
-from willay.ports.signals import PublicSearchPort, SearchResult, is_social_host, registered_host
+from willay.ports.signals import HAZARD_TERMS, PublicSearchPort, SearchResult, is_social_host, platform_allows, registered_host
 
 SIGNALS_MODEL = "muse-spark-1.3"
 MIN_CONFIDENCE = 0.5
 BATCH_SIZE = 10  # results per model call, so one refresh has a bounded cost
 DEFAULT_MAX_QUERIES = 8
 DEFAULT_GROUP_SIZE = 5
-HAZARD_TERMS = ("huaico", "deslizamiento", "desborde", "relave", "inundación")
 EVENT_TYPE_VALUES = [t.value for t in SignalEventType]
 DISCLAIMER_ES = (
     "Señales públicas no verificadas: noticias y páginas web de las últimas 72 horas, leídas por un modelo y ubicadas solo si "
@@ -64,6 +63,8 @@ _INSTRUCTIONS = (
     "only if you are sure, otherwise null. event_time is ISO 8601 with time zone when the text gives it, otherwise null. "
     "confidence is between 0 and 1: how sure you are that this page reports this event at this place. source_url is copied "
     "exactly from the input. Never output personal data: no names of people, handles, profile links or phone numbers. "
+    "A result with a platform field is a short public social-media post (the snippet is its only text, with handles already removed): "
+    "accept it only when the text itself names the event and the place. "
     "If nothing qualifies return {\"events\": []}."
 )
 
@@ -176,9 +177,14 @@ def clean_url(url: str) -> str:
     return urlunsplit((parts.scheme, netloc, parts.path or "/", query, ""))
 
 
-def _web_page(url: str) -> bool:
+def _web_page(url: str, platform: str | None = None) -> bool:
+    """A public web page, or a post of a social platform that an enabled social adapter (TikHub) declared for this very host."""
     host = registered_host(url)
-    return bool(host) and not is_social_host(host)
+    if not host:
+        return False
+    if not is_social_host(host):
+        return platform is None
+    return platform_allows(platform, url)
 
 
 def filter_results(results: Sequence[SearchResult], now: datetime) -> list[SearchResult]:
@@ -186,7 +192,7 @@ def filter_results(results: Sequence[SearchResult], now: datetime) -> list[Searc
     seen: set[str] = set()
     kept: list[SearchResult] = []
     for item in results:
-        if not _web_page(item.url) or item.url in seen:
+        if not _web_page(item.url, item.platform) or item.url in seen:
             continue
         if item.published is not None and not in_window(item.published, now):
             continue
@@ -208,6 +214,7 @@ class ExtractedEvent:
     event_time: datetime
     confidence: float
     source_url: str
+    platform: str | None = None
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -220,7 +227,9 @@ def _parse_time(value: object) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _parse_event(raw: object, published: Mapping[str, datetime | None], now: datetime) -> ExtractedEvent | None:
+def _parse_event(
+    raw: object, published: Mapping[str, datetime | None], now: datetime, platforms: Mapping[str, str | None] | None = None
+) -> ExtractedEvent | None:
     if not isinstance(raw, Mapping):
         return None
     try:
@@ -243,7 +252,7 @@ def _parse_event(raw: object, published: Mapping[str, datetime | None], now: dat
         return None
     guess = raw.get("district_ubigeo_guess")
     guess = guess.strip() if isinstance(guess, str) and guess.strip().isdigit() and len(guess.strip()) == 6 else None
-    return ExtractedEvent(event_type, place.strip(), guess, when, float(confidence), url)
+    return ExtractedEvent(event_type, place.strip(), guess, when, float(confidence), url, (platforms or {}).get(url))
 
 
 def extract_events(
@@ -254,13 +263,15 @@ def extract_events(
     errors: list[str] | None = None,
 ) -> list[ExtractedEvent]:
     """Ask the model for events, in batches. With `errors` given, a failed batch is recorded and the others still run."""
-    pages = [r for r in results if _web_page(r.url)]
+    pages = [r for r in results if _web_page(r.url, r.platform)]
     published = {r.url: r.published for r in pages}
+    platforms = {r.url: r.platform for r in pages}
     events: list[ExtractedEvent] = []
     for start in range(0, len(pages), BATCH_SIZE):
         batch = pages[start : start + BATCH_SIZE]
         payload = [
             {"url": r.url, "title": r.title, "published": r.published.isoformat() if r.published else None, "snippet": r.snippet}
+            | ({"platform": r.platform} if r.platform else {})
             for r in batch
         ]
         try:
@@ -282,7 +293,7 @@ def extract_events(
         if not isinstance(raw_events, list):
             continue
         for raw in raw_events:
-            event = _parse_event(raw, published, now)
+            event = _parse_event(raw, published, now, platforms)
             if event is not None:
                 events.append(event)
     return events
@@ -302,7 +313,7 @@ def signals_from_events(events: Sequence[ExtractedEvent], gazetteer: Gazetteer) 
     seen: set[tuple[str, str, SignalEventType]] = set()
     dropped = 0
     for event in events:
-        if not _web_page(event.source_url):
+        if not _web_page(event.source_url, event.platform):
             continue
         match = gazetteer.lookup(event.place_name, event.ubigeo_guess)
         if match is None:
@@ -576,7 +587,7 @@ class RefreshReport:
 
 
 def refresh_public_signals(
-    search: PublicSearchPort,
+    search: PublicSearchPort | Sequence[PublicSearchPort],
     extractor: StructuredExtractionPort,
     gazetteer: Gazetteer,
     hub: PublicSignalsHub,
@@ -592,12 +603,14 @@ def refresh_public_signals(
     since = now - timedelta(hours=SIGNAL_WINDOW_HOURS)
     queries = build_queries(gazetteer, max_queries, group_size)
     report.queries = len(queries)
+    sources = list(search) if isinstance(search, (list, tuple)) else [search]
     found: list[SearchResult] = []
     for query in queries:
-        try:
-            found.extend(search.search(query, since=since, max_results=max_results))
-        except Exception as exc:
-            report.errors.append(f"search failed: {_error_name(exc)}")
+        for source in sources:  # a failing source is reported and the others still run
+            try:
+                found.extend(source.search(query, since=since, max_results=max_results))
+            except Exception as exc:
+                report.errors.append(f"search failed: {_error_name(exc)}")
     results = filter_results(found, now)
     report.results_seen = len(results)
     signals: list[PublicSignal] = []

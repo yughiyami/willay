@@ -222,7 +222,7 @@ def test_extra_fields_the_model_adds_are_never_carried():
     event = extract_events([result()], FakeExtractor({"events": [sneaky]}), NOW)[0]
     dump = repr(event)
     assert "Maria" not in dump and "@maria" not in dump and "texto original" not in dump
-    assert set(vars(event)) == {"event_type", "place_name", "ubigeo_guess", "event_time", "confidence", "source_url"}
+    assert set(vars(event)) == {"event_type", "place_name", "ubigeo_guess", "event_time", "confidence", "source_url", "platform"}  # platform comes from the search adapter, never from the model
 
 
 def test_a_page_with_no_snippet_and_pages_beyond_the_cap_are_handled():
@@ -298,6 +298,66 @@ def test_social_and_non_web_urls_never_become_signals():
     events = extract_events(pages, FakeExtractor({"events": raws}), NOW)
     signals, _ = signals_from_events(events, gazetteer)
     assert [s.source_url for s in signals] == ["https://diario.example.org/a"]
+
+
+def social(url, platform="tiktok", **kwargs) -> SearchResult:
+    return SearchResult(title="", url=url, published=kwargs.get("published", NOW - 2 * HOURS), snippet=kwargs.get("snippet", "huaico en Chosica"), platform=platform)
+
+
+def test_a_social_post_is_kept_only_when_a_social_adapter_vouches_for_its_platform():
+    gazetteer = build_gazetteer(SETTLEMENTS, DISTRICTS)
+    posts = [
+        social("https://www.tiktok.com/@/video/1", "tiktok"),
+        social("https://x.com/i/status/2", "twitter"),
+        social("https://www.tiktok.com/@/video/3", "twitter"),  # the platform does not match the host
+        social("https://www.facebook.com/p/4", "tiktok"),  # not a platform we support
+        result(url="https://www.tiktok.com/@/video/5"),  # no platform: a plain web result (Tavily)
+    ]
+    extractor = FakeExtractor({"events": [raw_event(source_url=p.url) for p in posts]})
+    events = extract_events(posts, extractor, NOW)
+    signals, _ = signals_from_events(events, gazetteer)
+    assert sorted(s.source_url for s in signals) == ["https://www.tiktok.com/@/video/1", "https://x.com/i/status/2"]
+    assert {s.source_domain for s in signals} == {"tiktok.com", "x.com"}
+
+
+def test_the_model_sees_the_platform_of_a_social_post_but_the_web_payload_is_unchanged():
+    extractor = FakeExtractor({"events": []})
+    extract_events([social("https://x.com/i/status/2", "twitter"), result()], extractor, NOW)
+    payload = json.loads(extractor.calls[0]["content"][0]["text"].split("\n", 1)[1])
+    by_url = {p["url"]: p for p in payload}
+    assert by_url["https://x.com/i/status/2"]["platform"] == "twitter"
+    assert "platform" not in by_url["https://diario.example.org/a"]
+
+
+def test_social_posts_pass_the_window_filter_like_any_page():
+    from willay.application.public_signals import filter_results
+
+    fresh = social("https://x.com/i/status/2", "twitter")
+    stale = social("https://x.com/i/status/3", "twitter", published=NOW - 100 * HOURS)
+    assert filter_results([fresh, stale, fresh], NOW) == [fresh]
+
+
+def test_refresh_accepts_several_search_sources_and_one_failing_source_does_not_stop_the_others():
+    gazetteer = build_gazetteer(SETTLEMENTS, DISTRICTS)
+    web = FakeSearch(default=[result()])
+    broken = FakeSearch(default=RuntimeError("tikhub down"))
+    post = social("https://x.com/i/status/2", "twitter")
+    other = FakeSearch(default=[post])
+    extractor = FakeExtractor({"events": [raw_event(), raw_event(source_url=post.url, event_type="desborde")]})
+    hub = make_hub()
+    report = refresh_public_signals([web, broken, other], extractor, gazetteer, hub, now=NOW, max_queries=1)
+    assert report.signals_kept == 2 and len(report.errors) == 1 and "tikhub down" not in report.errors[0]
+    assert len(web.queries) == len(broken.queries) == len(other.queries) == 1
+
+
+def test_two_distinct_social_posts_count_as_two_signals_for_the_district():
+    gazetteer = build_gazetteer(SETTLEMENTS, DISTRICTS)
+    posts = [social("https://www.tiktok.com/@/video/1", "tiktok"), social("https://x.com/i/status/2", "twitter")]
+    events = extract_events(posts, FakeExtractor({"events": [raw_event(source_url=p.url) for p in posts]}), NOW)
+    signals, _ = signals_from_events(events, gazetteer)
+    hub = make_hub()
+    hub.merge(signals, refreshed_at=NOW)
+    assert hub.count_for({"150118"}, set()) == 2
 
 
 # --- refresh: search -> extract -> geocode -> hub -------------------------------------------------------------

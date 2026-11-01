@@ -132,7 +132,7 @@ backend/
                    PublicSearch
     adapters/      in-memory fakes, fixture loader, meta_model_api (Responses/ASR/Image/SAM HTTP), meta_usage, clip_media,
                    asterisk_ari (telephony), simulated_call, web_whatsapp, alert_ledger, dem_window, safe_points_file, tavily_search,
-                   signals_fixture
+                   tikhub_search (optional, off), signals_fixture
     api/           FastAPI app
   fixtures/        synthetic Rimac-basin and backtest JSON
   tests/           unit + api
@@ -294,13 +294,26 @@ Optional and **off by default** (`WILLAY_SIGNALS_ENABLED=0`). With `WILLAY_SIGNA
 relave / inundación in the Rimac-basin district names, has Muse Spark extract `{event_type, place_name, district_ubigeo_guess, event_time,
 confidence, source_url}`, and geocodes the place by exact normalized match against our ANA settlements and districts (unmatched is dropped).
 Raw text is discarded; only event type, our place name, time, and the page URL and domain are kept (no authors, handles or profiles; social
-platforms are never searched). The HazardAnalyst tool `get_public_signals` and `GET /signals` expose them; they can only add a
+platforms are never searched unless the operator enables the optional TikHub source below). The HazardAnalyst tool `get_public_signals` and `GET /signals` expose them; they can only add a
 "corroborated by N public signals" reason to `ATTENTION`. Purpose, data minimization, the Ley 29733 and ToS notes (to be verified) and the
 unverified parts are in `docs/SIGNALS.md`. Environment variable NAMES (add them to your local `.env`; `.env.example` is write-protected for
 the tooling that built this):
 
 ```
 WILLAY_SIGNALS_ENABLED=0     TAVILY_API_KEY=     WILLAY_SIGNALS_MAX_QUERIES=8     WILLAY_SIGNALS_COOLDOWN_S=300
+```
+
+**Optional TikHub social-post search (off by default; read the ToS and Ley 29733 warning in `docs/SIGNALS.md` before enabling).**
+`WILLAY_TIKHUB_ENABLED=1` plus `TIKHUB_API_KEY` (and `WILLAY_SIGNALS_ENABLED=1`, `WILLAY_META_ENABLED=1`) adds public TikTok and X posts as
+a second search source. Only the post URL (without handle), platform, time and a text snippet of at most 400 characters (stripped of
+@handles, links and phone numbers) are used, once, for extraction; no usernames, profiles, avatars or follower counts are kept, and no
+images are processed. Signals still only corroborate `ATTENTION` (at least 2 distinct sources) and never raise a tier. The response parsing is
+untested against the live service. Environment variable NAMES (add them to your local `.env`; `.env.example` is write-protected for the tooling
+that built this):
+
+```
+WILLAY_TIKHUB_ENABLED=0     TIKHUB_API_KEY=     WILLAY_TIKHUB_PLATFORMS=tiktok,twitter     WILLAY_TIKHUB_MAX_REQUESTS=5
+TIKHUB_API_BASE_URL=
 ```
 
 ### Learned risk model
@@ -313,6 +326,10 @@ deep learning on 78 districts) and for the table.
 
 `scripts/record_demo.py --live --yes-synthetic-only --budget 0.5` runs the demo against the real models and rewrites
 `backend/fixtures/demo/orchestrator_recording.json` and `live_trace.json` (a real trace; synthetic clip and households only).
+For Muse Wonder to plan every turn, the remaining budget must stay above `WILLAY_PLANNER_MIN_BUDGET_USD` (0.40): the script sets the global
+guard to the logged total plus `--budget`, so use `--budget 1.0` and `WILLAY_RUN_BUDGET_USD=1.00`. The committed recording (31 Oct 2026, all 7
+planner turns on `muse-wonder-1.0`, US$ 0.18) replaced an earlier one whose last planner turn fell back to Spark; that one is kept as
+`orchestrator_recording_spark_fallback.json` and `live_trace_spark_fallback.json` (unused by the app).
 
 ## Status
 

@@ -104,7 +104,7 @@ def test_results_keep_only_title_url_published_date_and_a_short_snippet():
     assert result.title.startswith("Huaico en Chosica")
     assert result.published == datetime(2026, 2, 10, 13, 30, tzinfo=timezone.utc)
     assert 0 < len(result.snippet) <= 400
-    assert set(vars(result)) == {"title", "url", "published", "snippet"}
+    assert set(vars(result)) == {"title", "url", "published", "snippet", "platform"} and result.platform is None  # a web page, not a social post
     assert "Juan" not in repr(result) and "texto completo" not in repr(result)
 
 

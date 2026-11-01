@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[2] / "willay"
-SIGNAL_MODULES = ("willay.domain.signals", "willay.application.public_signals", "willay.ports.signals", "willay.adapters.tavily_search", "willay.adapters.signals_fixture")
+SIGNAL_MODULES = ("willay.domain.signals", "willay.application.public_signals", "willay.ports.signals", "willay.adapters.tavily_search", "willay.adapters.tikhub_search", "willay.adapters.signals_fixture")
 
 # Tier rules, dispatch, proposals/approval and the telephony/messaging adapters: none may import the signals layer.
 MUST_NOT_IMPORT_SIGNALS = [

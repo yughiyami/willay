@@ -71,6 +71,7 @@ ENV_CALLS_PROVIDER = "WILLAY_CALLS_PROVIDER"  # simulated | asterisk (default wh
 ENV_SIGNALS_ENABLED = "WILLAY_SIGNALS_ENABLED"  # public signals (Tavily search + model extraction); off by default
 ENV_SIGNALS_MAX_QUERIES = "WILLAY_SIGNALS_MAX_QUERIES"
 ENV_SIGNALS_COOLDOWN_S = "WILLAY_SIGNALS_COOLDOWN_S"
+ENV_TIKHUB_ENABLED = "WILLAY_TIKHUB_ENABLED"  # social-post search through TikHub; off by default, see docs/SIGNALS.md (terms of service)
 DEFAULT_SIGNALS_COOLDOWN_S = 300.0
 DEFAULT_TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "templates" / "reviewed"
 REAL_DISCLAIMER = (
@@ -128,7 +129,7 @@ class AppDependencies:
     demo_confirm_timeout_s: float = 900.0  # how long the demo waits for the operator's click
     # Public signals: unverified news/web reports, context only. Off unless WILLAY_SIGNALS_ENABLED=1 (see docs/SIGNALS.md).
     signals: PublicSignalsHub = field(default_factory=lambda: PublicSignalsHub(simulated_loader=lambda now: load_simulated_signals(now=now)))
-    signal_search: PublicSearchPort | None = None
+    signal_search: PublicSearchPort | Sequence[PublicSearchPort] | None = None  # one source, or several (Tavily and TikHub)
     signals_max_queries: int = DEFAULT_MAX_QUERIES
     signals_cooldown_s: float = DEFAULT_SIGNALS_COOLDOWN_S
 
@@ -489,10 +490,24 @@ def attach_signals_from_env(deps: AppDependencies, environ: Mapping[str, str] | 
         _load_dotenv()
     from willay.adapters.tavily_search import MissingTavilyKeyError, TavilySearchAdapter  # local import: optional at start-up
 
+    sources: list[PublicSearchPort] = []
+    names: list[str] = []
+    problems: list[str] = []
     try:
-        search = TavilySearchAdapter.from_env(env)
+        sources.append(TavilySearchAdapter.from_env(env))
+        names.append("Tavily search")
     except MissingTavilyKeyError:
-        deps.signals.note = "WILLAY_SIGNALS_ENABLED=1 but TAVILY_API_KEY is not set"
+        problems.append("TAVILY_API_KEY is not set")
+    if env.get(ENV_TIKHUB_ENABLED, "0").strip() == "1":
+        from willay.adapters.tikhub_search import MissingTikHubKeyError, TikHubPublicSearchAdapter
+
+        try:
+            sources.append(TikHubPublicSearchAdapter.from_env(env))
+            names.append("TikHub social-post search")
+        except MissingTikHubKeyError:
+            problems.append("TIKHUB_API_KEY is not set")
+    if not sources:
+        deps.signals.note = "WILLAY_SIGNALS_ENABLED=1 but " + " and ".join(problems)
         return deps
     if deps.extractor is None:
         deps.signals.note = "the extraction model is not wired: set WILLAY_META_ENABLED=1 and META_API_KEY"
@@ -505,11 +520,11 @@ def attach_signals_from_env(deps: AppDependencies, environ: Mapping[str, str] | 
             return default
         return value if value >= 0 and (not integer or value >= 1) else default
 
-    deps.signal_search = search
+    deps.signal_search = sources[0] if len(sources) == 1 else sources
     deps.signals_max_queries = int(positive(ENV_SIGNALS_MAX_QUERIES, DEFAULT_MAX_QUERIES, integer=True))
     deps.signals_cooldown_s = positive(ENV_SIGNALS_COOLDOWN_S, DEFAULT_SIGNALS_COOLDOWN_S)
     deps.signals.enabled = True
-    deps.signals.note = "live: Tavily search and Muse Spark extraction; refresh with POST /signals/refresh"
+    deps.signals.note = f"live: {' and '.join(names)} and Muse Spark extraction; refresh with POST /signals/refresh" + "".join(f" ({p})" for p in problems if p.startswith("TIKHUB"))
     return deps
 
 

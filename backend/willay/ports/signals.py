@@ -36,12 +36,60 @@ SOCIAL_DOMAINS: tuple[str, ...] = (
 )
 
 
+# Hazard terms of every query (Spanish: huaico = Andean flash flood / debris flow, relave = mine tailings).
+HAZARD_TERMS = ("huaico", "deslizamiento", "desborde", "relave", "inundación")
+
+# The only social platforms a result may come from, and only when an explicitly enabled social adapter (TikHub) vouches for it
+# by setting `SearchResult.platform`. A social URL without a matching platform is dropped like any other social page.
+PLATFORM_HOSTS: dict[str, tuple[str, ...]] = {
+    "tiktok": ("tiktok.com",),
+    "twitter": ("x.com", "twitter.com"),
+}
+
+
 @dataclass(frozen=True)
 class SearchResult:
+    """What a search may hand over. `platform` is None for an ordinary web page and names the social platform otherwise;
+    a social post has no title and its snippet (already stripped of handles, links and phone numbers) is for extraction only."""
+
     title: str
     url: str
     published: datetime | None
     snippet: str
+    platform: str | None = None
+
+
+def parse_query(query: str) -> tuple[list[str], list[str]]:
+    """Split a query built by the use case ('t1 OR t2 ... tN Place1 OR Place2 ... Perú') into hazard terms and place names.
+
+    Returns ([], []) when the text does not have that structure, so the caller can search it as free text.
+    """
+    text = (query or "").strip()
+    if text.endswith("Perú"):
+        text = text[: -len("Perú")].rstrip()
+    tokens = [t.strip() for t in text.split(" OR ") if t.strip()]
+    hazards: list[str] = []
+    places: list[str] = []
+    for token in tokens:
+        lowered = token.lower()
+        matched = next((h for h in HAZARD_TERMS if lowered == h or lowered.startswith(h + " ")), None)
+        if matched and not places:
+            hazards.append(matched)
+            rest = token[len(matched):].strip()
+            if rest:
+                places.append(rest)
+        elif hazards:
+            places.append(token)
+    if len(hazards) != len(HAZARD_TERMS) or not places:
+        return [], []
+    return hazards, places
+
+
+def platform_allows(platform: str | None, url: str) -> bool:
+    """True when a social URL's host belongs to the platform the adapter declared."""
+    hosts = PLATFORM_HOSTS.get(platform or "")
+    host = registered_host(url)
+    return bool(hosts) and bool(host) and any(host == h or host.endswith("." + h) for h in hosts)
 
 
 def registered_host(url: str) -> str:
