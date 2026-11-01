@@ -127,6 +127,10 @@ class MetaModelApiAdapter:
         self._usage = usage_log
         self._text_model = text_model
 
+    @property
+    def usage_log(self) -> UsageLog | None:
+        return self._usage
+
     # --- plumbing ---------------------------------------------------------------
 
     def _headers(self, extra: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -293,13 +297,17 @@ class MetaModelApiAdapter:
         tools: Sequence[Mapping[str, object]],
         previous_response_id: str | None = None,
         purpose: str = "agent",
+        model: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> AgentTurn:
         body: dict = {
-            "model": self._text_model,
+            "model": model or self._text_model,
             "instructions": instructions,
             "input": list(input_items),
             "reasoning": {"effort": DEFAULT_REASONING_EFFORT},
         }
+        if max_output_tokens:
+            body["max_output_tokens"] = max_output_tokens
         if tools:
             body["tools"] = list(tools)
         if previous_response_id:
@@ -315,7 +323,16 @@ class MetaModelApiAdapter:
                 calls.append(
                     ToolCall(str(item.get("call_id", "")), str(item.get("name", "")), arguments if isinstance(arguments, dict) else {})
                 )
-        return AgentTurn(response_id=str(payload.get("id", "")), text=_response_text(payload), tool_calls=tuple(calls))
+        usage = payload.get("usage") or {}
+        return AgentTurn(
+            response_id=str(payload.get("id", "")),
+            text=_response_text(payload),
+            tool_calls=tuple(calls),
+            model=str(body["model"]),
+            input_tokens=int(usage.get("input_tokens", 0)),
+            output_tokens=int(usage.get("output_tokens", 0)),
+            cached_tokens=int((usage.get("input_tokens_details") or {}).get("cached_tokens", 0)),
+        )
 
     # --- TranscriptionPort -------------------------------------------------------
 

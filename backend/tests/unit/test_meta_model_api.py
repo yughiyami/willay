@@ -405,3 +405,18 @@ def test_adapter_never_hits_the_network_when_given_a_mock_transport():
     adapter, seen = make_adapter(lambda r: httpx.Response(200, json=text_response("ok")))
     adapter.rephrase("x")
     assert all(r.url.host == "api.meta.ai" for r in seen)
+
+
+def test_run_turn_can_pick_the_model_cap_output_and_reports_usage():
+    payload = dict(text_response("ok"), usage={"input_tokens": 120, "output_tokens": 30, "input_tokens_details": {"cached_tokens": 20}})
+    adapter, seen = make_adapter(lambda r: httpx.Response(200, json=payload))
+    turn = adapter.run_turn(instructions="x", input_items=[], tools=[], model="muse-wonder-1.0", max_output_tokens=900)
+    body = json.loads(seen[0].content)
+    assert body["model"] == "muse-wonder-1.0" and body["max_output_tokens"] == 900
+    assert (turn.model, turn.input_tokens, turn.output_tokens, turn.cached_tokens) == ("muse-wonder-1.0", 120, 30, 20)
+
+
+def test_run_turn_defaults_to_the_text_model():
+    adapter, seen = make_adapter(lambda r: httpx.Response(200, json=text_response("ok")))
+    turn = adapter.run_turn(instructions="x", input_items=[], tools=[])
+    assert json.loads(seen[0].content)["model"] == MODEL_TEXT and turn.model == MODEL_TEXT

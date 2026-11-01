@@ -16,6 +16,11 @@ class AgentTurn:
     response_id: str
     text: str
     tool_calls: tuple[ToolCall, ...] = ()
+    # Metadata for tracing and cost control; adapters that do not report usage leave the defaults.
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
 
 
 class AgentModelPort(Protocol):
@@ -29,6 +34,8 @@ class AgentModelPort(Protocol):
         tools: Sequence[Mapping[str, object]],
         previous_response_id: str | None = None,
         purpose: str = "",
+        model: str | None = None,
+        max_output_tokens: int | None = None,
     ) -> AgentTurn: ...
 
 
