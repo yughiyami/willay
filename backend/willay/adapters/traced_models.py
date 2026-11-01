@@ -25,9 +25,10 @@ def _ms(started: float) -> int:
 
 
 class TracedAgentModel:
-    def __init__(self, inner, default_model: str = "muse-spark-1.3") -> None:
+    def __init__(self, inner, default_model: str = "muse-spark-1.3", replayed: bool = False) -> None:
         self._inner = inner
         self._default_model = default_model
+        self._replayed = replayed  # a recorded turn: free, and marked so the console can say so
 
     def __getattr__(self, name: str):  # everything else (usage log, other ports) is the wrapped adapter's
         return getattr(self._inner, name)
@@ -70,7 +71,8 @@ class TracedAgentModel:
                 latency_ms=_ms(started),
                 input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens,
-                cost_usd=text_cost(used, turn.input_tokens, turn.output_tokens, turn.cached_tokens),
+                cost_usd=0.0 if self._replayed else text_cost(used, turn.input_tokens, turn.output_tokens, turn.cached_tokens),
+                detail={"replayed": True} if self._replayed else {},
                 args_summary=f"purpose={purpose or 'agent'} tools={len(tools)}",
                 result_summary=("tool_calls: " + ", ".join(c.name for c in turn.tool_calls)) if turn.tool_calls else f"text {len(turn.text)} chars",
             )
@@ -78,9 +80,10 @@ class TracedAgentModel:
 
 
 class TracedSegmenter:
-    def __init__(self, inner, model_label: str = MODEL_SAM) -> None:
+    def __init__(self, inner, model_label: str = MODEL_SAM, standin: bool = False) -> None:
         self._inner = inner
         self._label = model_label
+        self._standin = standin  # an offline stand-in for SAM (colour threshold): shown as such, never billed
 
     def segment_video(self, video: bytes, prompt: str, purpose: str = "") -> VideoSegmentation:
         trace = current_trace()
@@ -97,7 +100,8 @@ class TracedSegmenter:
                 "model_call",
                 model=self._label,
                 latency_ms=_ms(started),
-                cost_usd=sam_cost(frames=billed) if billed is not None and self._label == MODEL_SAM else 0.0,
+                cost_usd=sam_cost(frames=billed) if billed is not None and self._label == MODEL_SAM and not self._standin else 0.0,
+                detail={"standin": True} if self._standin else {},
                 args_summary=summarize_args({"prompt": prompt, "purpose": purpose}, safe_text_keys=("prompt",)),
                 result_summary=f"{len(result.frames)} frames with a match, billed_frames={billed}",
             )
@@ -105,9 +109,10 @@ class TracedSegmenter:
 
 
 class TracedImage:
-    def __init__(self, inner, model_label: str = MODEL_IMAGE) -> None:
+    def __init__(self, inner, model_label: str = MODEL_IMAGE, replayed: bool = False) -> None:
         self._inner = inner
         self._label = model_label
+        self._replayed = replayed
 
     def generate(self, prompt: str, size: str | None = None) -> bytes:
         trace = current_trace()
@@ -123,7 +128,8 @@ class TracedImage:
                 "model_call",
                 model=self._label,
                 latency_ms=_ms(started),
-                cost_usd=image_cost(1) if self._label == MODEL_IMAGE else 0.0,
+                cost_usd=image_cost(1) if self._label == MODEL_IMAGE and not self._replayed else 0.0,
+                detail={"replayed": True} if self._replayed else {},
                 args_summary=summarize_args({"prompt": prompt, "size": size or ""}),
                 result_summary=f"png {len(image)} bytes",
             )
