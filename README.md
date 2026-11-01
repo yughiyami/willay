@@ -224,6 +224,9 @@ Muse Image, SAM 3.1), prices and the list of things we could not verify are in `
   of the `HazardContext` (region "costa central"; `WILLAY_SEASONAL_ANOMALY` overrides it).
 - **River watcher**: see `docs/WATCHER_PROTOCOL.md` (geometry, recording protocol, validation plan; accuracy on real water is
   unmeasured). Dry run: `scripts/make_synthetic_clip.py` then `scripts/watch_clip_cli.py`.
+  Optional real-footage demo asset (public domain, USGS): `docs/media/vigia_real_clip/` has a 10 s river timelapse with SAM 3.1 overlay
+  frames and its attribution. Qualitative only: no gauge in view, no `rise_cm`, no accuracy claim. Other screened clips (Wikimedia
+  Commons, CC BY-SA 3.0/4.0, kept outside the repo) are listed with licences and attribution in `willay-data/raw/water_clips/SOURCES.md`.
 - **Muse Wonder judge**: `scripts/judge_messages.py --live` has Wonder score 10 composed Spanish messages (advisory; the code's
   fact check is authoritative). Results in `derived/message_judgements.json`.
 - **Live smoke tests**: skipped by default. Run them once on purpose with `.venv/Scripts/python -m pytest -m live`.
@@ -316,4 +319,6 @@ deep learning on 78 districts) and for the table.
 Real-data adapters for the INGEMMET tailings inventory, ANA settlements, OSM intakes, INDECI, CHIRPS and ENFEN
 timeline are in place behind the existing ports, and the Meta Model API is wired for the operator agent, ENFEN
 ingestion, the river watcher (contract confirmed, accuracy on real rivers not yet measured), evacuation cards and the
-advisory judge. Not yet connected: live SENAMHI warnings and forecasts, SEDAPAL intake locations, ENFEN communique N°19.
+advisory judge. Not yet connected: live SENAMHI warnings and forecasts, SEDAPAL intake locations. ENFEN communique N°19 (30 Oct 2026) is published: its PDF and
+timeline row are in `willay-data`, but the LLM-verified rainfall outlook in `derived/enfen_hazard.json` is still the one for N°18, so the app falls
+back to the default outlook (or `WILLAY_SEASONAL_ANOMALY`) until `scripts/ingest_enfen.py` is run on N°19.
