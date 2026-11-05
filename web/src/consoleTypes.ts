@@ -88,6 +88,9 @@ export interface Health {
   synthetic_data: boolean;
   data_mode: string;
   calls_mode: string;
+  messaging_mode?: string;
+  telegram_mode?: string;
+  webchat_mode?: string;
 }
 
 export interface ScenarioInput {

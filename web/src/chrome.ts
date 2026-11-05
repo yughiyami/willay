@@ -13,6 +13,15 @@ export async function refreshChips(): Promise<{ live: boolean; offlineDemo: bool
     calls.textContent = health.calls_mode.startsWith("simulated") ? "llamadas simuladas" : `llamadas: ${health.calls_mode.split(" ")[0]}`;
     calls.title = health.calls_mode;
     calls.className = `chip ${health.calls_mode.startsWith("simulated") ? "chip-ok" : "chip-warn"}`;
+    const chat = document.getElementById("chip-chat");
+    if (chat) {
+      const webchat = health.webchat_mode ?? "no disponible";
+      const telegram = health.telegram_mode ?? "no disponible";
+      const chatLive = webchat.startsWith("live");
+      chat.textContent = `chat web: ${chatLive ? "activo" : "apagado"} · Telegram: ${telegram.startsWith("disabled") ? "apagado" : telegram.split(" ")[0]}`;
+      chat.title = `Chat web: ${webchat}\nTelegram: ${telegram}\nMensajería: ${health.messaging_mode ?? "sin datos"}`;
+      chat.className = `chip ${chatLive ? "chip-ok" : ""}`;
+    }
   } catch {
     data.textContent = "sin conexión al servidor";
     data.className = "chip chip-warn";

@@ -1,0 +1,443 @@
+/* Readability + guided workflow (added for the demo): bigger type, stronger contrast,
+   a persistent workflow stepper, a clear primary CTA, a map legend and the intro overlay.
+   Loaded after console.css. */
+:root {
+  --muted: #b3bdcb;
+  --line: #333d4b;
+}
+body {
+  font-size: 14px;
+}
+.brand h1 {
+  font-size: 19px;
+}
+.brand span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.chip {
+  font-size: 12px;
+  padding: 3px 9px;
+}
+#app {
+  grid-template-columns: minmax(0, 1fr) 540px;
+}
+#console .muted,
+.muted {
+  font-size: 13px;
+}
+#console h3 {
+  font-size: 13px;
+}
+.honesty {
+  font-size: 12px;
+}
+
+/* --- header controls --- */
+.demo-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-link {
+  color: #bfe3ff;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+  border-radius: 6px;
+  padding: 6px 11px;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.header-link:hover {
+  border-color: var(--accent);
+}
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  padding: 0;
+  font-weight: 700;
+  font-size: 16px;
+}
+.demo-options {
+  position: relative;
+}
+.demo-options summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  list-style: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.demo-options summary::-webkit-details-marker {
+  display: none;
+}
+.demo-options[open] summary {
+  background: var(--surface-2);
+}
+.demo-options-body {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 190px;
+}
+.cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+button.cta-btn {
+  font-size: 15px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(180deg, #2f8cff, #1c64d6);
+  border: 1px solid #7bb8ff;
+  box-shadow: 0 0 0 0 rgba(90, 176, 255, 0.55);
+  animation: cta-pulse 2.4s ease-out infinite;
+}
+button.cta-btn:disabled {
+  animation: none;
+}
+@keyframes cta-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(90, 176, 255, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(90, 176, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(90, 176, 255, 0);
+  }
+}
+.cta-hint {
+  font-size: 11px;
+  color: #bfe3ff;
+}
+
+/* --- workflow stepper --- */
+#demo-bar {
+  padding: 8px 16px 10px;
+}
+.flow-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+#demo-steps {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  overflow: visible;
+}
+.demo-step-item {
+  display: flex;
+}
+button.demo-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 6px 8px;
+  white-space: normal;
+  text-align: left;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
+.demo-step-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.demo-state {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+.demo-step-tags {
+  display: flex;
+  gap: 4px;
+}
+.model-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+button.demo-step.done {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+}
+button.demo-step.done .demo-n {
+  background: var(--ok);
+  color: var(--bg);
+}
+button.demo-step.current {
+  color: #fff;
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  border-color: var(--accent);
+  animation: step-glow 1.6s ease-in-out infinite;
+}
+button.demo-step.current .demo-n {
+  background: var(--accent);
+  color: var(--bg);
+}
+@keyframes step-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+button.demo-step.pinned {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+.step-detail {
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-height: 2.4em;
+}
+.step-detail h4 {
+  margin: 0 0 3px;
+  font-size: 14px;
+}
+.step-detail p {
+  margin: 2px 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.step-hint {
+  color: var(--muted);
+}
+.step-note {
+  color: #ffd877;
+}
+.step-who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 5px 0;
+}
+.model-chip {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: #0b0f14;
+  font-weight: 600;
+}
+.wm-spark {
+  background: var(--m-spark);
+}
+.wm-wonder {
+  background: var(--m-wonder);
+}
+.wm-sam {
+  background: var(--m-sam);
+}
+.wm-image {
+  background: var(--m-image);
+}
+.wm-voice {
+  background: var(--m-voice);
+}
+.wm-chat {
+  background: #25d366;
+}
+.wm-human {
+  background: #f4f1ea;
+}
+.wm-rules {
+  background: #aab4c2;
+}
+#demo-msg {
+  font-size: 13px;
+  margin-top: 6px;
+}
+#demo-msg:empty {
+  display: none;
+}
+
+/* --- map overlays --- */
+.drawer-toggle {
+  font-size: 13px;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(4px);
+}
+.view-home {
+  position: absolute;
+  top: 10px;
+  left: 138px;
+  z-index: 5;
+  font-size: 13px;
+  padding: 7px 12px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(4px);
+}
+.map-legend {
+  position: absolute;
+  left: 10px;
+  bottom: 34px;
+  z-index: 3;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 12px;
+  color: var(--fg);
+  display: grid;
+  gap: 4px;
+  pointer-events: none;
+}
+.lg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lg-ramp {
+  width: 34px;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #2e9e5b, #e0b81d, #e8791c, #c8281e);
+}
+.lg-flow {
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(90deg, #ffd166 0 6px, #e8791c 6px 12px);
+}
+.lg-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-sizing: border-box;
+  margin: 0 11px;
+}
+#map-drawer {
+  top: 50px;
+  width: 330px;
+  font-size: 14px;
+}
+
+/* --- intro overlay --- */
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 8, 12, 0.78);
+  backdrop-filter: blur(3px);
+  padding: 16px;
+  overflow-y: auto;
+}
+.intro-panel {
+  width: min(1100px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.intro-head h2 {
+  margin: 0 0 2px;
+  font-size: 26px;
+}
+.intro-head p {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+.intro-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.intro-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.intro-n {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #06101c;
+  font-weight: 800;
+}
+.intro-card h3 {
+  margin: 2px 0;
+  font-size: 15px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg);
+}
+.intro-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #d3dae4;
+}
+.intro-tag {
+  margin-top: auto;
+  font-size: 11px;
+  color: #bfe3ff;
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+}
+.intro-sim {
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  font-size: 13px;
+  color: #ffe9a8;
+}
+.intro-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+@media (max-width: 1100px) {
+  .intro-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  #demo-steps {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

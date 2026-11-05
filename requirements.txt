@@ -18,3 +18,7 @@ imageio-ffmpeg==0.7.0
 
 # Asterisk ARI events WebSocket (adapters only; imported lazily, live calls are off by default).
 websockets==15.0.1
+
+# WhatsApp voice notes (OGG/Opus -> WAV) are decoded with the ffmpeg bundled in imageio-ffmpeg above.
+# Preferred decoder when importable (falls back to the imageio-ffmpeg binary without it):
+av==19.0.2

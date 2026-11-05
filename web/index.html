@@ -16,28 +16,54 @@
         <span id="chip-data" class="chip">datos…</span>
         <span id="chip-meta" class="chip">Meta…</span>
         <span id="chip-calls" class="chip">llamadas…</span>
+        <span id="chip-chat" class="chip">chat…</span>
       </div>
       <div class="demo-controls">
-        <select id="demo-mode" aria-label="Origen de la demostración">
-          <option value="offline">Grabado (sin red)</option>
-          <option value="live">Meta en vivo</option>
-        </select>
-        <label class="inline" title="Si no se marca, la demostración se detiene hasta que el operador pulse Confirmar">
-          <input type="checkbox" id="demo-auto" /> confirmar solo
-        </label>
-        <button type="button" id="demo-run" class="primary">&#9654; Modo demostración</button>
+        <a id="open-chat" class="header-link" href="/chat.html" target="_blank" rel="noopener"
+          title="Abre la conversación del ciudadano (WhatsApp web) en otra pestaña, para verla junto a la consola">Abrir chat del ciudadano</a>
+        <button type="button" id="help-open" class="icon-btn" aria-label="¿Cómo funciona?" title="¿Cómo funciona?">?</button>
+        <details class="demo-options">
+          <summary title="Opciones de la demostración">Opciones</summary>
+          <div class="demo-options-body">
+            <select id="demo-mode" aria-label="Origen de la demostración">
+              <option value="offline">Grabado (sin red)</option>
+              <option value="live">Meta en vivo</option>
+            </select>
+            <label class="inline" title="Si no se marca, la demostración se detiene hasta que el operador pulse Confirmar">
+              <input type="checkbox" id="demo-auto" /> confirmar solo
+            </label>
+          </div>
+        </details>
+        <div class="cta">
+          <button type="button" id="demo-run" class="primary cta-btn" disabled>&#9654; Modo demostración</button>
+          <span class="cta-hint" id="demo-hint">Cargando datos…</span>
+        </div>
       </div>
     </header>
-    <div id="demo-bar" hidden>
+    <section id="demo-bar" aria-label="Flujo de Willay, paso a paso">
+      <div class="flow-head">
+        <strong>Flujo de Willay</strong>
+        <span class="muted">Pulse un paso para ver qué ocurre y qué modelo de Meta interviene.</span>
+      </div>
       <ol id="demo-steps"></ol>
+      <div id="step-detail" class="step-detail" aria-live="polite"></div>
       <p id="demo-msg" role="status"></p>
-    </div>
+    </section>
 
     <div id="app">
       <section id="map" aria-label="Mapa">
         <div id="globe"></div>
-        <button type="button" id="drawer-toggle" class="drawer-toggle" aria-expanded="true">Capas y sitios</button>
-        <div id="map-drawer">
+        <button type="button" id="drawer-toggle" class="drawer-toggle" aria-expanded="false">Capas y sitios</button>
+        <button type="button" id="view-home" class="view-home" title="Volver a la vista general de las cuencas">Vista general</button>
+        <div id="map-legend" class="map-legend" aria-label="Leyenda del mapa">
+          <strong>Leyenda</strong>
+          <div class="lg-row"><span class="lg-ramp"></span> Relave: riesgo bajo a muy alto</div>
+          <div class="lg-row"><span class="lg-flow"></span> Ruta de flujo aguas abajo (animada)</div>
+          <div class="lg-row"><span class="lg-dot" style="background:#ffd166"></span> Poblado alcanzado</div>
+          <div class="lg-row"><span class="lg-dot" style="background:#2fc4ff"></span> Toma de agua (La Atarjea: Lima)</div>
+          <div class="lg-row"><span class="lg-dot" style="background:#e5383b"></span> Hogar pide ayuda</div>
+        </div>
+        <div id="map-drawer" hidden>
           <p id="banner" class="banner" hidden></p>
           <p id="status" class="muted">Cargando sitios…</p>
           <fieldset class="controls">

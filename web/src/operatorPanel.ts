@@ -2,6 +2,13 @@ import { dispatchAlerts, fetchCases, fetchHouseholdAlerts, sendSimulatorReply } 
 import { el } from "./panel";
 import type { HouseholdAlert, HouseholdResponse, HouseholdTier, OperatorCase, Site } from "./types";
 
+const CHANNEL_LABELS: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  webchat: "chat web",
+  telegram: "Telegram",
+  call: "llamada",
+};
+
 interface OperatorPanelOptions {
   /** Sites to alert (ranked list). */
   sites: Site[];
@@ -75,8 +82,10 @@ export function initOperatorPanel(options: OperatorPanelOptions): OperatorPanel 
     const meta = el("span", "bubble-meta", `Willay Relaves - ${alert.message_status === "sent" ? "entregado (simulado)" : alert.message_status}`);
     bubble.append(meta);
     const children: HTMLElement[] = [bubble];
-    if (alert.response_channel === "whatsapp" && alert.response) {
-      children.push(el("div", "bubble out", alert.response === "SAFE" ? "1 - Estoy a salvo" : alert.response === "NEEDS_HELP" ? "2 - Necesito ayuda" : "(sin respuesta)"));
+    if (alert.response_channel && alert.response_channel !== "call" && alert.response) {
+      const bubbleOut = el("div", "bubble out", alert.response === "SAFE" ? "1 - Estoy a salvo" : alert.response === "NEEDS_HELP" ? "2 - Necesito ayuda" : "(sin respuesta)");
+      bubbleOut.append(el("span", "bubble-meta", `por ${CHANNEL_LABELS[alert.response_channel] ?? alert.response_channel}`));
+      children.push(bubbleOut);
     }
     if (alert.call_status !== "not_attempted") {
       children.push(el("p", "phone-call", `Llamada: ${alert.call_status}${alert.call_detail ? ` (${alert.call_detail})` : ""}`));

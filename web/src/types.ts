@@ -204,7 +204,7 @@ export interface HouseholdAlert {
   call_status: "not_attempted" | "completed" | "blocked" | "error";
   call_detail: string;
   response: HouseholdResponse | null;
-  response_channel: "call" | "whatsapp" | null;
+  response_channel: string | null; // "call" | "whatsapp" | "webchat" | "telegram" | ...
 }
 
 export interface OperatorCase {

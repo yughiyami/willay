@@ -8,6 +8,15 @@ from enum import Enum
 from willay.domain.entities import AlertTier
 
 
+def mask_phone(phone: str) -> str:
+    return phone[:3] + "*" * max(0, len(phone) - 5) + phone[-2:] if len(phone) > 5 else "***"
+
+
+def phone_digits(phone: str) -> str:
+    """Digits only, so '+51900000001' (household, E.164) and '51900000001' (WhatsApp wa_id) compare equal."""
+    return "".join(ch for ch in (phone or "") if ch.isdigit())
+
+
 class ResponseKind(Enum):
     """What a household answered (or did not) after an alert."""
 
@@ -60,7 +69,9 @@ class HouseholdAlert:
     lat: float
     message_text: str = ""
     message_language: str = "es"
-    message_status: str = "pending"  # sent | failed
+    message_status: str = "pending"  # sent | delivered | read | failed | template_only (the alert text itself was not delivered)
+    message_id: str | None = None  # provider id of the outbound message (WhatsApp wamid), to map delivery statuses
+    message_note: str = ""
     call_status: str = "not_attempted"  # not_attempted | completed | blocked | error
     call_detail: str = ""
     response: ResponseKind | None = None
@@ -79,3 +90,8 @@ class OperatorCase:
     reason: ResponseKind  # NEEDS_HELP or NO_ANSWER
     status: str = "open"  # open | closed
     note: str = ""
+    kind: str = "alert_response"  # alert_response | watcher_report (a video sent over WhatsApp, not measured)
+    # Where the household says it is (a WhatsApp location pin); None until it shares one.
+    lat: float | None = None
+    lon: float | None = None
+    location_note: str = ""

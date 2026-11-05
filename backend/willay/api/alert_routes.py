@@ -19,12 +19,8 @@ from willay.application.dispatch_alerts import (
     record_response,
 )
 from willay.application.rank_sites import RankedSite
-from willay.domain.dispatch import HouseholdAlert, OperatorCase, ResponseKind
+from willay.domain.dispatch import HouseholdAlert, OperatorCase, ResponseKind, mask_phone
 from willay.domain.entities import AlertTier
-
-
-def mask_phone(phone: str) -> str:
-    return phone[:3] + "*" * max(0, len(phone) - 5) + phone[-2:] if len(phone) > 5 else "***"
 
 
 class DispatchIn(BaseModel):
@@ -63,6 +59,7 @@ def alert_to_dict(alert: HouseholdAlert) -> dict:
         "message_text": alert.message_text,
         "message_language": alert.message_language,
         "message_status": alert.message_status,
+        "message_note": alert.message_note,
         "call_status": alert.call_status,
         "call_detail": alert.call_detail,
         "response": alert.response.value if alert.response else None,
@@ -85,6 +82,10 @@ def case_to_dict(case: OperatorCase, alerts: dict[str, HouseholdAlert]) -> dict:
         "reason": case.reason.value,
         "status": case.status,
         "note": case.note,
+        "kind": case.kind,
+        "reported_lat": case.lat,
+        "reported_lon": case.lon,
+        "location_note": case.location_note,
     }
 
 
@@ -113,6 +114,11 @@ def execute_dispatch(deps: AppDependencies, ranked: RankedSite, tier: AlertTier,
         deps.calls,
         deps.ledger,
     )
+    if deps.alert_fanout is not None:  # web chat and Telegram chats receive the alert too; their failures never break the dispatch
+        try:
+            deps.alert_fanout(result)
+        except Exception:
+            pass
     alerts = {a.id: a for a in result.alerts}
     return {
         "dispatch_id": result.dispatch_id,

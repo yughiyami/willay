@@ -92,6 +92,10 @@ Calls are **simulated unless `WILLAY_CALLS_ENABLED=1` and Asterisk is configured
 dials numbers in `WILLAY_CALL_ALLOWLIST`. Full setup (Asterisk snippets, recordings, what is unverified) is in
 `docs/TELEPHONY.md`.
 
+Messages are simulated too, unless `WILLAY_MESSAGING_PROVIDER=whatsapp` and the `WHATSAPP_*` variables are set: then the
+alert goes out through the WhatsApp Business Cloud API with "Estoy a salvo" / "Necesito ayuda" reply buttons, only to
+allow-listed numbers, and the webhook handles replies, locations, voice notes and videos. Setup in `docs/WHATSAPP.md`.
+
 Environment variable NAMES for the alert loop (set values in your local `.env`; `.env.example` could not be edited by
 the tooling that built this, so add them there yourself):
 

@@ -47,5 +47,6 @@ class InMemoryAlertLedger:
             return list(self._cases)
 
     def open_case_for(self, alert_id: str) -> OperatorCase | None:
+        # Only the household's own answer case: a watcher_report (video) case must not be closed by a SAFE reply.
         with self._lock:
-            return next((c for c in self._cases if c.alert_id == alert_id and c.status == "open"), None)
+            return next((c for c in self._cases if c.alert_id == alert_id and c.status == "open" and c.kind == "alert_response"), None)

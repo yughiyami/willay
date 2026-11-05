@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
@@ -17,5 +18,9 @@ export default defineConfig({
     }),
   ],
   server: { port: 5173 },
-  build: { chunkSizeWarningLimit: 6000 },
+  build: {
+    chunkSizeWarningLimit: 6000,
+    // Two pages: the operator console (index) and the citizen WhatsApp-style chat.
+    rollupOptions: { input: { main: resolve(__dirname, "index.html"), chat: resolve(__dirname, "chat.html") } },
+  },
 });

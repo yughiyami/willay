@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#075e54" />
+    <title>Willay · Alerta temprana (chat del ciudadano)</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%277%27 fill=%27%2325d366%27/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div class="stage">
+      <div class="phone" id="phone">
+        <header class="wa-header">
+          <div class="wa-avatar" aria-hidden="true">W</div>
+          <div class="wa-title">
+            <strong>Willay · Alerta temprana</strong>
+            <span id="wa-status">conectando…</span>
+          </div>
+          <div class="wa-menu">
+            <button type="button" id="wa-menu-btn" class="wa-icon" aria-label="Menú" aria-haspopup="true" aria-expanded="false">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            </button>
+            <div id="wa-menu-pop" class="wa-pop" hidden>
+              <button type="button" id="wa-new">Nueva conversación</button>
+            </div>
+          </div>
+        </header>
+        <main id="wa-chat" class="wa-chat" aria-live="polite"></main>
+        <div id="wa-offline" class="wa-offline" hidden>
+          <strong>Backend no disponible</strong>
+          <p>El chat necesita el servidor de Willay (<code>/webchat</code>). Verifique que esté encendido; se reintenta solo.</p>
+          <button type="button" id="wa-retry">Reintentar ahora</button>
+        </div>
+        <div id="wa-sheet" class="wa-sheet" hidden>
+          <p>Compartir ubicación</p>
+          <button type="button" id="wa-loc-real">Usar mi ubicación actual</button>
+          <button type="button" id="wa-loc-demo">Usar punto de demostración (San Mateo de Huanchor)</button>
+          <button type="button" id="wa-loc-cancel" class="ghost">Cancelar</button>
+        </div>
+        <footer class="wa-bar">
+          <form id="wa-form" class="wa-form" autocomplete="off">
+            <div class="wa-field">
+              <input id="wa-input" type="text" maxlength="1000" placeholder="Escribe un mensaje" aria-label="Escribe un mensaje" enterkeyhint="send" />
+              <button type="button" id="wa-loc" class="wa-icon dark" aria-label="Enviar ubicación" title="Enviar ubicación">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+              </button>
+            </div>
+            <button type="submit" id="wa-send" class="wa-round" aria-label="Enviar" hidden>
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+            </button>
+            <button type="button" id="wa-mic" class="wa-round" aria-label="Grabar nota de voz" title="Toque para grabar una nota de voz">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.9V22h2v-3.1A8 8 0 0 0 20 11z"/></svg>
+            </button>
+          </form>
+          <div id="wa-rec" class="wa-rec" hidden>
+            <button type="button" id="wa-rec-cancel" class="wa-icon dark" aria-label="Cancelar grabación">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"/></svg>
+            </button>
+            <span class="rec-dot"></span>
+            <span id="wa-rec-time">0:00</span>
+            <span class="rec-label">Grabando… toque enviar al terminar</span>
+            <button type="button" id="wa-rec-send" class="wa-round" aria-label="Enviar nota de voz">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
+    <script type="module" src="/src/chat.ts"></script>
+  </body>
+</html>

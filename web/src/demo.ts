@@ -1,17 +1,7 @@
 import type { AgentConsole } from "./agentConsole";
 import { startDemo } from "./consoleApi";
 import type { TraceEvent } from "./consoleTypes";
-import { el } from "./panel";
-
-const STEPS: { key: string; label: string }[] = [
-  { key: "enfen", label: "ENFEN extraordinario" },
-  { key: "senamhi", label: "SENAMHI naranja" },
-  { key: "watcher", label: "Vigía: el río sube" },
-  { key: "operator", label: "Operador confirma" },
-  { key: "dispatch", label: "Envío a hogares" },
-  { key: "household_reply", label: "Hogar responde 2" },
-  { key: "done", label: "Caso abierto" },
-];
+import { WORKFLOW_STEPS as STEPS, initWorkflowBar } from "./workflow";
 
 interface DemoOptions {
   agents: AgentConsole;
@@ -33,22 +23,11 @@ export function initDemo(options: DemoOptions): Demo {
   const button = document.getElementById("demo-run") as HTMLButtonElement;
   const mode = document.getElementById("demo-mode") as HTMLSelectElement;
   const auto = document.getElementById("demo-auto") as HTMLInputElement;
-  const bar = document.getElementById("demo-bar") as HTMLElement;
-  const list = document.getElementById("demo-steps") as HTMLOListElement;
+  const workflow = initWorkflowBar();
   const message = document.getElementById("demo-msg") as HTMLElement;
   let active = false;
 
-  const renderSteps = (current: number): void => {
-    list.replaceChildren(
-      ...STEPS.map((step, index) => {
-        const state = index < current ? "done" : index === current ? "current" : "todo";
-        const item = el("li", `demo-step ${state}`);
-        item.append(el("span", "demo-n", String(index + 1)), el("span", undefined, step.label));
-        if (state === "current") item.setAttribute("aria-current", "step");
-        return item;
-      }),
-    );
-  };
+  const renderSteps = (current: number): void => workflow.setProgress(current);
 
   const setMessage = (text: string, attention = false): void => {
     message.textContent = text;
@@ -60,7 +39,6 @@ export function initDemo(options: DemoOptions): Demo {
     active = true;
     button.disabled = true;
     options.onStart?.();
-    bar.hidden = false;
     renderSteps(-1);
     setMessage("Iniciando la demostración…");
     const selected = mode.value as "offline" | "live";
@@ -72,6 +50,7 @@ export function initDemo(options: DemoOptions): Demo {
       })
       .catch((error: Error) => {
         setMessage(`No se pudo iniciar: ${error.message}`, true);
+        renderSteps(-2);
       })
       .finally(() => {
         active = false;

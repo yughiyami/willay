@@ -221,3 +221,58 @@ def test_the_web_simulator_stores_messages_per_recipient_in_order():
     assert [m.text for m in sim.messages_for("+51900000001")] == ["uno", "dos"]
     assert len(sim.all_messages()) == 3
     assert sim.messages_for("+51900000009") == []
+
+
+# --- interactive buttons (WhatsApp Cloud API) -----------------------------------------------------------------
+
+
+class ButtonMessaging:
+    """A messaging adapter that also supports reply buttons (InteractiveMessagingPort)."""
+
+    def __init__(self, template_only=False, fail=False):
+        self.texts: list[tuple[str, str]] = []
+        self.buttons: list[tuple[str, str, list]] = []
+        self.template_only, self.fail = template_only, fail
+
+    def send(self, recipient, text):
+        self.texts.append((recipient, text))
+
+    def send_buttons(self, recipient, body, buttons):
+        from willay.ports.messaging import SendResult
+
+        if self.fail:
+            raise RuntimeError("down")
+        self.buttons.append((recipient, body, list(buttons)))
+        return SendResult(message_id=f"wamid.{len(self.buttons)}", used_template=self.template_only)
+
+
+def test_a_button_capable_channel_gets_the_alert_with_safe_and_help_buttons_bound_to_the_alert_id():
+    setup = Setup()
+    setup.messaging = ButtonMessaging()
+    result = setup.run(request(AlertTier.PREPARATION, households=[household(1)]))
+    alert = result.alerts[0]
+    assert setup.messaging.texts == []
+    (recipient, body, buttons) = setup.messaging.buttons[0]
+    assert recipient == "+51900000001" and body == alert.message_text
+    assert buttons == [(f"SAFE:{alert.id}", "Estoy a salvo"), (f"HELP:{alert.id}", "Necesito ayuda")]
+    assert alert.message_status == "sent" and alert.message_id == "wamid.1"
+
+
+def test_a_template_only_delivery_is_not_reported_as_the_alert_being_sent():
+    setup = Setup()
+    setup.messaging = ButtonMessaging(template_only=True)
+    alert = setup.run(request(AlertTier.PREPARATION, households=[household(1)])).alerts[0]
+    assert alert.message_status == "template_only" and "24" in alert.message_note
+
+
+def test_a_failing_button_send_marks_the_alert_failed_and_the_loop_continues():
+    setup = Setup()
+    setup.messaging = ButtonMessaging(fail=True)
+    alerts = setup.run(request(AlertTier.PREPARATION)).alerts
+    assert len(alerts) == 3 and all(a.message_status == "failed" for a in alerts)
+
+
+def test_a_plain_channel_still_gets_a_plain_text_message():
+    setup = Setup()
+    alert = setup.run(request(AlertTier.PREPARATION, households=[household(1)])).alerts[0]
+    assert setup.messaging.sent and alert.message_status == "sent" and alert.message_id is None

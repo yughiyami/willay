@@ -2,12 +2,16 @@ import {
   Cartesian2,
   Cartesian3,
   Color,
+  ColorMaterialProperty,
   ConstantProperty,
+  DistanceDisplayCondition,
   GeoJsonDataSource,
+  HeightReference,
   LabelStyle,
   type Entity,
   type Viewer,
 } from "cesium";
+import { FlowMaterialProperty } from "./flowMaterial";
 import type { SignalDistrict } from "./consoleTypes";
 import { riskColorCss } from "./riskColor";
 import type {
@@ -25,6 +29,63 @@ export type DistrictMetric = "off" | "static" | "learned" | "cenepred" | "emerge
 
 export const PATH_PREFIX = "path-";
 export const INTAKE_PREFIX = "intake-";
+export const BEACON_PREFIX = "beacon-";
+
+/** Everything that sits on the map is clamped to the terrain and never hidden behind a ridge. */
+const ON_GROUND = {
+  heightReference: HeightReference.CLAMP_TO_GROUND,
+  disableDepthTestDistance: Number.POSITIVE_INFINITY,
+} as const;
+
+const LABEL_BACKGROUND = Color.fromCssColorString("#0b0f14").withAlpha(0.72);
+
+function mapLabel(text: string, options: { font?: string; fill?: string; offset?: Cartesian2; maxDistanceM?: number } = {}) {
+  return {
+    text,
+    font: options.font ?? "600 13px 'Segoe UI', system-ui, sans-serif",
+    style: LabelStyle.FILL,
+    fillColor: Color.fromCssColorString(options.fill ?? "#ffffff"),
+    showBackground: true,
+    backgroundColor: LABEL_BACKGROUND,
+    backgroundPadding: new Cartesian2(7, 4),
+    pixelOffset: options.offset ?? new Cartesian2(0, -22),
+    heightReference: HeightReference.CLAMP_TO_GROUND,
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    distanceDisplayCondition: new DistanceDisplayCondition(0, options.maxDistanceM ?? 160_000),
+  };
+}
+
+/** Tailings as risk-coloured glowing markers: a point on the ground plus a translucent beacon column. */
+export function addSiteMarkers(viewer: Viewer, sites: Site[]): void {
+  const labelled = new Set<string>();
+  for (const site of sites) {
+    const color = Color.fromCssColorString(riskColorCss(site.risk.value));
+    const labelText = labelled.has(site.name) ? null : site.name;
+    labelled.add(site.name);
+    const marker = viewer.entities.add({
+      id: `${SITE_PREFIX}${site.id}`,
+      name: site.name,
+      position: Cartesian3.fromDegrees(site.lon, site.lat),
+      point: { pixelSize: 16, color, outlineColor: Color.WHITE, outlineWidth: 2, ...ON_GROUND },
+      label: labelText ? mapLabel(labelText, { maxDistanceM: 90_000 }) : undefined,
+    });
+    viewer.entities.add({
+      id: `${BEACON_PREFIX}${site.id}`,
+      name: site.name,
+      parent: marker,
+      position: Cartesian3.fromDegrees(site.lon, site.lat),
+      ellipse: {
+        semiMajorAxis: 260 + site.risk.value * 1500,
+        semiMinorAxis: 260 + site.risk.value * 1500,
+        heightReference: HeightReference.CLAMP_TO_GROUND,
+        extrudedHeight: 500 + site.risk.value * 6500,
+        extrudedHeightReference: HeightReference.RELATIVE_TO_GROUND,
+        material: new ColorMaterialProperty(color.withAlpha(0.38)),
+        outline: false,
+      },
+    });
+  }
+}
 
 export function addFlowPaths(viewer: Viewer, paths: FlowPathCollection, sites: Site[]): void {
   const riskBySite = new Map(sites.map((s) => [s.id, s.risk.value]));
@@ -33,14 +94,16 @@ export function addFlowPaths(viewer: Viewer, paths: FlowPathCollection, sites: S
     const risk = riskBySite.get(siteId);
     if (risk === undefined) continue; // path of a site outside the ranked set
     const flat = feature.geometry.coordinates.flat();
+    const color = Color.fromCssColorString(riskColorCss(risk));
     viewer.entities.add({
       id: `${PATH_PREFIX}${siteId}`,
-      name: `Flow path of ${feature.properties.name}`,
+      name: `Ruta de flujo de ${feature.properties.name}`,
       polyline: {
         positions: Cartesian3.fromDegreesArray(flat),
-        width: 2,
+        width: 7,
         clampToGround: true,
-        material: Color.fromCssColorString(riskColorCss(risk)).withAlpha(0.75),
+        // A real MaterialProperty: animated glowing flow in the risk colour (a raw ConstantProperty would crash the renderer).
+        material: new FlowMaterialProperty(color, Math.max(3, (feature.properties.length_m ?? 20_000) / 2500)) as never,
       },
     });
   }
@@ -49,33 +112,33 @@ export function addFlowPaths(viewer: Viewer, paths: FlowPathCollection, sites: S
 export function highlightPath(viewer: Viewer, siteId: string | null): void {
   for (const entity of viewer.entities.values) {
     if (!entity.id.startsWith(PATH_PREFIX) || !entity.polyline) continue;
-    entity.polyline.width = new ConstantProperty(entity.id === `${PATH_PREFIX}${siteId}` ? 5 : 2);
+    entity.polyline.width = new ConstantProperty(entity.id === `${PATH_PREFIX}${siteId}` ? 12 : 7);
   }
 }
 
 export function addIntakes(viewer: Viewer, layer: IntakeLayer): void {
   for (const item of layer.items) {
+    const isAtarjea = item.name === "La Atarjea";
+    const unnamed = /^unnamed/i.test(item.name);
     viewer.entities.add({
       id: `${INTAKE_PREFIX}${item.id}`,
-      name: `${item.name} (approximate)`,
+      name: `${item.name} (aprox.)`,
       position: Cartesian3.fromDegrees(item.lon, item.lat),
       point: {
-        pixelSize: 9,
-        color: Color.fromCssColorString("#2fa8e8"),
+        pixelSize: isAtarjea ? 20 : 11,
+        color: Color.fromCssColorString("#2fc4ff"),
         outlineColor: Color.WHITE,
-        outlineWidth: 2,
+        outlineWidth: isAtarjea ? 3 : 2,
+        ...ON_GROUND,
       },
-      label: {
-        text: `${item.name} (approx.)`,
-        font: "11px sans-serif",
-        style: LabelStyle.FILL_AND_OUTLINE,
-        outlineWidth: 3,
-        fillColor: Color.WHITE,
-        outlineColor: Color.BLACK,
-        pixelOffset: new Cartesian2(10, -10),
-        showBackground: false,
-        distanceDisplayCondition: undefined,
-      },
+      label: unnamed
+        ? undefined
+        : mapLabel(isAtarjea ? "La Atarjea · agua potable de Lima" : `${item.name} (aprox.)`, {
+            fill: "#8fe0ff",
+            font: isAtarjea ? "700 15px 'Segoe UI', system-ui, sans-serif" : undefined,
+            maxDistanceM: isAtarjea ? 400_000 : 70_000,
+            offset: new Cartesian2(0, isAtarjea ? -30 : -20),
+          }),
     });
   }
 }
@@ -123,6 +186,7 @@ export function addPasivos(viewer: Viewer, layer: PasivosLayer): void {
         color: Color.fromCssColorString("#a98467"),
         outlineColor: Color.WHITE,
         outlineWidth: 1,
+        ...ON_GROUND,
       },
     });
   });
@@ -144,11 +208,18 @@ export function showReachedSettlements(viewer: Viewer, settlements: SettlementEx
       name: `${s.settlement_name} (pop. ${s.population})`,
       position: Cartesian3.fromDegrees(s.lon, s.lat),
       point: {
-        pixelSize: Math.max(5, Math.min(18, 3 + Math.log10(s.population + 10) * 3)),
-        color: Color.fromCssColorString("#f4f1ea").withAlpha(0.9),
+        pixelSize: Math.max(8, Math.min(20, 4 + Math.log10(s.population + 10) * 3)),
+        color: Color.fromCssColorString("#ffd166"),
         outlineColor: Color.fromCssColorString("#7a3b00"),
         outlineWidth: 2,
+        ...ON_GROUND,
       },
+      label: mapLabel(`${s.settlement_name} · ${s.population} hab.`, {
+        fill: "#ffe3a3",
+        font: "600 12px 'Segoe UI', system-ui, sans-serif",
+        offset: new Cartesian2(0, -18),
+        maxDistanceM: 70_000,
+      }),
     });
   }
 }
@@ -230,9 +301,8 @@ export class DistrictLayer {
       const props = this.propertiesOf(entity);
       if (!props || !entity.polygon) continue;
       const value = districtMetricValue(props, metric);
-      entity.polygon.material = new ConstantProperty(
-        value === null ? Color.TRANSPARENT : rampColor(value),
-      ) as never;
+      // Must be a MaterialProperty. A bare ConstantProperty(Color) has no getType() and stops the renderer.
+      entity.polygon.material = new ColorMaterialProperty(value === null ? Color.TRANSPARENT : rampColor(value));
     }
   }
 
@@ -286,19 +356,9 @@ export function showHouseholdMarkers(viewer: Viewer, alerts: HouseholdAlert[]): 
         color: Color.fromCssColorString(needsHelp ? "#e5383b" : "#f59e0b"),
         outlineColor: Color.WHITE,
         outlineWidth: needsHelp ? 4 : 2,
+        ...ON_GROUND,
       },
-      label: needsHelp
-        ? {
-            text,
-            font: "13px sans-serif",
-            style: LabelStyle.FILL_AND_OUTLINE,
-            outlineWidth: 3,
-            fillColor: Color.WHITE,
-            outlineColor: Color.fromCssColorString("#7a0c10"),
-            pixelOffset: new Cartesian2(14, -14),
-            showBackground: false,
-          }
-        : undefined,
+      label: needsHelp ? mapLabel(text, { fill: "#ffd1d3", offset: new Cartesian2(0, -50), maxDistanceM: 400_000 }) : undefined,
     });
   }
 }
@@ -324,17 +384,14 @@ export function showSignals(viewer: Viewer, districts: SignalDistrict[], visible
         color: Color.fromCssColorString(SIGNAL_COLOR).withAlpha(0.18),
         outlineColor: Color.fromCssColorString(SIGNAL_COLOR),
         outlineWidth: district.simulated ? 2 : 3,
+        ...ON_GROUND,
       },
-      label: {
-        text: `${district.count}${district.simulated ? " sim." : ""}`,
-        font: "11px sans-serif",
-        style: LabelStyle.FILL_AND_OUTLINE,
-        outlineWidth: 3,
-        fillColor: Color.fromCssColorString(SIGNAL_COLOR),
-        outlineColor: Color.BLACK,
-        pixelOffset: new Cartesian2(14, 12),
-        showBackground: false,
-      },
+      label: mapLabel(`${district.count}${district.simulated ? " sim." : ""}`, {
+        fill: SIGNAL_COLOR,
+        font: "600 11px 'Segoe UI', system-ui, sans-serif",
+        offset: new Cartesian2(16, 10),
+        maxDistanceM: 120_000,
+      }),
     });
   }
 }

@@ -1,20 +1,22 @@
 import "./cesium-setup";
 import {
-  Cartesian3,
   Color,
-  EllipsoidTerrainProvider,
+  Credit,
   ImageryLayer,
-  OpenStreetMapImageryProvider,
+  type TerrainProvider,
+  UrlTemplateImageryProvider,
   Viewer,
 } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./style.css";
 import "./console.css";
+import "./guide.css";
 import { fetchDistricts, fetchFlowPaths, fetchIntakes, fetchPasivos, fetchSiteDetail, fetchSites } from "./api";
 import { initAgentConsole } from "./agentConsole";
 import { initCards } from "./cards";
 import { refreshChips } from "./chrome";
 import { initDemo } from "./demo";
+import { initIntro } from "./intro";
 import { loadEvidence } from "./evidence";
 import { initProposals } from "./proposalsPanel";
 import { initSignals } from "./signals";
@@ -29,6 +31,8 @@ import {
   PATH_PREFIX,
   SITE_PREFIX,
   addFlowPaths,
+  addSiteMarkers,
+  BEACON_PREFIX,
   addIntakes,
   addPasivos,
   clearReachedSettlements,
@@ -41,18 +45,33 @@ import {
   showHouseholdMarkers,
   showReachedSettlements,
 } from "./layers";
+import { flyToPlace, setOverview } from "./mapView";
 import { renderDetail, renderDistrict, renderSiteList } from "./panel";
-import { riskColorCss } from "./riskColor";
+import { TerrariumTerrainProvider } from "./terrain";
 import type { LayerName, Site } from "./types";
 
-// Rimac basin, approximate center.
-const BASIN_CENTER = { lon: -76.6, lat: -11.8 };
+// Base map: Esri World Imagery (satellite) + Esri World Hillshade (relief shading), real terrain from AWS Terrain Tiles.
+// None of these needs a Cesium ion token. Attribution is shown in the Cesium credit bar (required by the providers).
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const satellite = new ImageryLayer(
+  new UrlTemplateImageryProvider({
+    url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+    maximumLevel: 17,
+    credit: new Credit("Imágenes: Esri, Maxar, Earthstar Geographics y la comunidad GIS", true),
+  }),
+);
+const hillshade = new ImageryLayer(
+  new UrlTemplateImageryProvider({
+    url: `${ESRI}/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}`,
+    maximumLevel: 13,
+    credit: new Credit("Sombreado: Esri", true),
+  }),
+  { alpha: 0.4 },
+);
 
 const viewer = new Viewer("globe", {
-  baseLayer: new ImageryLayer(
-    new OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" }),
-  ),
-  terrainProvider: new EllipsoidTerrainProvider(),
+  baseLayer: satellite,
+  terrainProvider: new TerrariumTerrainProvider() as unknown as TerrainProvider,
   baseLayerPicker: false,
   geocoder: false,
   animation: false,
@@ -62,10 +81,24 @@ const viewer = new Viewer("globe", {
   sceneModePicker: false,
   fullscreenButton: false,
 });
-
-viewer.camera.setView({
-  destination: Cartesian3.fromDegrees(BASIN_CENTER.lon, BASIN_CENTER.lat, 150_000),
-});
+viewer.imageryLayers.add(hillshade);
+viewer.scene.verticalExaggeration = 1.5;
+viewer.scene.globe.depthTestAgainstTerrain = true;
+viewer.scene.globe.maximumScreenSpaceError = 2.5; // lighter tiles, still sharp enough at this tilt
+viewer.scene.globe.baseColor = Color.fromCssColorString("#1d2a1f");
+viewer.scene.fog.density = 0.00012;
+viewer.scene.screenSpaceCameraController.minimumZoomDistance = 600;
+setOverview(viewer);
+// The demo button is wired only after the map data loads; until then it stays disabled and a request is queued.
+const demoButton = document.getElementById("demo-run") as HTMLButtonElement;
+let demoReady = false;
+let demoQueued = false;
+const requestDemo = (): void => {
+  if (demoReady) demoButton.click();
+  else demoQueued = true;
+};
+initIntro(requestDemo);
+(document.getElementById("view-home") as HTMLButtonElement).addEventListener("click", () => setOverview(viewer, true));
 
 const statusEl = document.getElementById("status") as HTMLElement;
 const bannerEl = document.getElementById("banner") as HTMLElement;
@@ -94,10 +127,7 @@ async function select(site: Site, sites: Site[], fly = true): Promise<void> {
   highlightPath(viewer, site.id);
   showReachedSettlements(viewer, site.exposure?.settlements ?? []);
   if (fly) {
-    viewer.camera.flyTo({
-      destination: Cartesian3.fromDegrees(site.lon, site.lat, 60_000),
-      duration: 1.2,
-    });
+    flyToPlace(viewer, site.lon, site.lat, { rangeM: 24_000 });
   }
   try {
     const detail = await fetchSiteDetail(site.id);
@@ -143,19 +173,7 @@ async function main(): Promise<void> {
     statusEl.textContent = `${data.sites.length} relaves en la cuenca, ordenados por riesgo`;
     bannerEl.textContent = data.disclaimer;
     bannerEl.hidden = !data.disclaimer;
-    for (const site of data.sites) {
-      viewer.entities.add({
-        id: `${SITE_PREFIX}${site.id}`,
-        name: site.name,
-        position: Cartesian3.fromDegrees(site.lon, site.lat),
-        point: {
-          pixelSize: 16,
-          color: Color.fromCssColorString(riskColorCss(site.risk.value)),
-          outlineColor: Color.WHITE,
-          outlineWidth: 2,
-        },
-      });
-    }
+    addSiteMarkers(viewer, data.sites);
     renderSiteList(listEl, data.sites, (site) => void select(site, data.sites));
     await loadOptionalLayers(data.sites);
 
@@ -163,7 +181,7 @@ async function main(): Promise<void> {
       sites: data.sites,
       onAlerts: (alerts) => showHouseholdMarkers(viewer, alerts),
       onFocus: (lon, lat) =>
-        viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(lon, lat, 25_000), duration: 1.2 }),
+        flyToPlace(viewer, lon, lat, { rangeM: 14_000 }),
     });
 
     sitesToggle.addEventListener("change", () => setSitesVisible(viewer, sitesToggle.checked));
@@ -251,6 +269,10 @@ async function main(): Promise<void> {
       refreshChips: () => void refreshChips(),
       onStart: () => void signals?.ensureSimulated(),
     });
+    demoReady = true;
+    demoButton.disabled = false;
+    (document.getElementById("demo-hint") as HTMLElement).textContent = "Pulse para ver el flujo completo";
+    if (demoQueued) demoButton.click();
     initVigia({
       onClipRegistered: (clipId) => agents.setClipId(clipId),
       onMeasured: (rise) => {
@@ -262,7 +284,7 @@ async function main(): Promise<void> {
     initCards(data.sites);
     signals = initSignals({
       viewer,
-      flyTo: (lon, lat) => viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(lon, lat, 30_000), duration: 1.2 }),
+      flyTo: (lon, lat) => flyToPlace(viewer, lon, lat, { rangeM: 18_000 }),
     });
     void signals.refresh();
     void refreshChips();
@@ -274,8 +296,8 @@ async function main(): Promise<void> {
         clearReachedSettlements(viewer);
         return;
       }
-      if (entity.id.startsWith(SITE_PREFIX) || entity.id.startsWith(PATH_PREFIX)) {
-        const siteId = entity.id.replace(SITE_PREFIX, "").replace(PATH_PREFIX, "");
+      if (entity.id.startsWith(SITE_PREFIX) || entity.id.startsWith(PATH_PREFIX) || entity.id.startsWith(BEACON_PREFIX)) {
+        const siteId = entity.id.replace(SITE_PREFIX, "").replace(PATH_PREFIX, "").replace(BEACON_PREFIX, "");
         const site = data.sites.find((s) => s.id === siteId);
         if (site) void select(site, data.sites);
         return;

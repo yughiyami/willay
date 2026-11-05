@@ -118,6 +118,9 @@ class DemoRunner:
             reset = getattr(target, "reset", None)
             if callable(reset):
                 reset()
+        for chat_channel in (deps.webchat, deps.telegram):  # alert ids bound to chats mean nothing after the ledger reset
+            if chat_channel is not None:
+                chat_channel.reset_bindings()
         deps.proposals.clear()
         deps.clips.add(DEMO_CLIP_ID, demo_clip_bytes(), "video/mp4")
 

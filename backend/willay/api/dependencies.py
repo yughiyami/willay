@@ -12,7 +12,9 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
+
+import httpx
 
 from willay.adapters.alert_ledger import InMemoryAlertLedger
 from willay.adapters.asterisk_ari import AsteriskAriAdapter, MissingAsteriskConfigError
@@ -31,6 +33,12 @@ from willay.adapters.in_memory import InMemorySiteRepository
 from willay.adapters.simulated_call import SimulatedCallAdapter
 from willay.adapters.twilio_calls import MissingTwilioConfigError, TwilioCallAdapter
 from willay.adapters.web_whatsapp import WebWhatsAppSimulator
+from willay.adapters.audio_convert import build_audio_converter
+from willay.adapters.composite_messaging import MirroredMessaging
+from willay.adapters.telegram_bot import ENV_TOKEN as ENV_TELEGRAM_TOKEN
+from willay.adapters.telegram_bot import TelegramBot, TelegramConfig
+from willay.adapters.webchat import WebChatStore
+from willay.adapters.whatsapp_cloud import MissingWhatsAppConfigError, WhatsAppCloudMessenger, WhatsAppConfig
 from willay.adapters.safe_points_file import FILE_NAME as SAFE_POINTS_FILE
 from willay.adapters.safe_points_file import load_proposed_safe_points
 from willay.adapters.signals_fixture import load_simulated_signals
@@ -68,6 +76,7 @@ ENV_TEMPLATES_DIR = "WILLAY_REVIEWED_TEMPLATES_DIR"
 ENV_META_ENABLED = "WILLAY_META_ENABLED"
 ENV_CALLS_ENABLED = "WILLAY_CALLS_ENABLED"
 ENV_CALLS_PROVIDER = "WILLAY_CALLS_PROVIDER"  # simulated | asterisk (default when enabled) | twilio
+ENV_MESSAGING_PROVIDER = "WILLAY_MESSAGING_PROVIDER"  # simulated (default) | whatsapp
 ENV_SIGNALS_ENABLED = "WILLAY_SIGNALS_ENABLED"  # public signals (Tavily search + model extraction); off by default
 ENV_SIGNALS_MAX_QUERIES = "WILLAY_SIGNALS_MAX_QUERIES"
 ENV_SIGNALS_COOLDOWN_S = "WILLAY_SIGNALS_COOLDOWN_S"
@@ -114,6 +123,17 @@ class AppDependencies:
     messaging: MessagingPort = field(default_factory=WebWhatsAppSimulator)
     calls: CallPort = field(default_factory=SimulatedCallAdapter)
     calls_mode: str = "simulated"
+    # WhatsApp Cloud API: set only by attach_messaging_from_env when WILLAY_MESSAGING_PROVIDER=whatsapp is fully configured.
+    whatsapp: WhatsAppCloudMessenger | None = None
+    messaging_mode: str = "simulated"
+    audio_converter: object | None = None  # OGG/Opus -> WAV for voice notes; None when no decoder is available
+    # Extra chat channels. The web chat is always on; Telegram only when TELEGRAM_BOT_TOKEN is set (see attach_telegram_from_env).
+    webchat: WebChatStore = field(default_factory=WebChatStore)
+    telegram_config: TelegramConfig | None = None
+    telegram_mode: str = "disabled: TELEGRAM_BOT_TOKEN missing"
+    telegram_http_client: "httpx.Client | None" = None
+    telegram: TelegramBot | None = None  # built by register_chat_channels
+    alert_fanout: Callable | None = None  # called with the DispatchResult after every dispatch (web chat, Telegram)
     ledger: AlertLedgerPort = field(default_factory=InMemoryAlertLedger)
     # Multi-agent orchestrator: models, run traces, dispatch proposals and the river-watcher clips.
     orchestrator_config: OrchestratorConfig = field(default_factory=OrchestratorConfig)
@@ -466,6 +486,69 @@ def attach_calls_from_env(deps: AppDependencies, environ: Mapping[str, str] | No
     return deps
 
 
+def attach_messaging_from_env(
+    deps: AppDependencies, environ: Mapping[str, str] | None = None, http_client: "httpx.Client | None" = None
+) -> AppDependencies:
+    """Real WhatsApp messages, only when WILLAY_MESSAGING_PROVIDER=whatsapp AND every WHATSAPP_* variable is set.
+
+    The web phone mock-up keeps working: messages go to WhatsApp and are mirrored into the simulator. Anything
+    incomplete or invalid keeps the simulator and leaves a note in `messaging_mode` naming variables (never values).
+    The messenger refuses numbers outside WILLAY_MESSAGE_ALLOWLIST (else WILLAY_CALL_ALLOWLIST).
+    """
+    env = os.environ if environ is None else environ
+    provider = (env.get(ENV_MESSAGING_PROVIDER) or "simulated").strip().lower()
+    if provider == "simulated":
+        return deps
+    if provider != "whatsapp":
+        deps.messaging_mode = f"simulated (unknown {ENV_MESSAGING_PROVIDER} '{provider}': use simulated or whatsapp)"
+        return deps
+    if environ is None:
+        _load_dotenv()
+        env = os.environ
+    try:
+        config = WhatsAppConfig.from_env(env)
+    except MissingWhatsAppConfigError as missing:
+        deps.messaging_mode = f"simulated (WhatsApp selected but not configured: {missing})"
+        return deps
+    except ValueError as invalid:
+        deps.messaging_mode = f"simulated (WhatsApp selected but the configuration is invalid: {invalid})"
+        return deps
+    messenger = WhatsAppCloudMessenger(config, client=http_client)
+    simulator = deps.messaging if isinstance(deps.messaging, WebWhatsAppSimulator) else WebWhatsAppSimulator()
+    deps.whatsapp = messenger
+    deps.messaging = MirroredMessaging(messenger, simulator)
+    deps.audio_converter = build_audio_converter()
+    deps.messaging_mode = f"whatsapp (Graph {config.graph_version}, allow-list: {len(config.allowlist)} number(s))"
+    return deps
+
+
+def attach_telegram_from_env(deps: AppDependencies, environ: Mapping[str, str] | None = None) -> AppDependencies:
+    """Telegram bot by long polling, only when TELEGRAM_BOT_TOKEN is set (TELEGRAM_ALLOWED_CHAT_IDS is optional).
+
+    The token is never printed or stored in `telegram_mode`. The poll thread starts with the app (see create_app).
+    """
+    env = os.environ if environ is None else environ
+    if environ is None and not env.get(ENV_TELEGRAM_TOKEN):
+        env = {**_dotenv_telegram_values(), **os.environ}  # read, never exported: the .env must not leak into the process
+    config = TelegramConfig.from_env(env)
+    if config is None:
+        return deps
+    deps.telegram_config = config
+    deps.telegram_mode = "live (0 chats)"
+    return deps
+
+
+def _dotenv_telegram_values() -> dict[str, str]:
+    try:
+        from dotenv import dotenv_values
+    except ImportError:
+        return {}
+    env_path = Path(__file__).resolve().parents[3] / ".env"
+    if not env_path.exists():
+        return {}
+    return {k: v for k, v in dotenv_values(env_path).items() if k.startswith("TELEGRAM_") and v}
+
+
 def _load_dotenv() -> None:
     """Load the repo-root `.env` into the process environment (never printed), like the Meta adapter does."""
     try:
@@ -554,17 +637,19 @@ def _with_demo(deps: AppDependencies, environ: Mapping[str, str] | None = None) 
 def default_dependencies() -> AppDependencies:
     mode = os.environ.get(ENV_MODE, "real").strip().lower()
     if mode == "synthetic":
-        return _with_demo(attach_calls_from_env(attach_signals_from_env(attach_meta_from_env(synthetic_dependencies()))))
+        return _with_demo(attach_telegram_from_env(attach_messaging_from_env(attach_calls_from_env(attach_signals_from_env(attach_meta_from_env(synthetic_dependencies()))))))
     if mode == "real":
-        return _with_demo(attach_calls_from_env(attach_signals_from_env(attach_meta_from_env(real_dependencies()))))
+        return _with_demo(attach_telegram_from_env(attach_messaging_from_env(attach_calls_from_env(attach_signals_from_env(attach_meta_from_env(real_dependencies()))))))
     raise ValueError(f"{ENV_MODE} must be 'real' or 'synthetic', got '{mode}'")
 
 
 __all__ = [
     "AppDependencies",
     "attach_calls_from_env",
+    "attach_messaging_from_env",
     "attach_meta_from_env",
     "attach_signals_from_env",
+    "attach_telegram_from_env",
     "default_dependencies",
     "load_demo_recording",
     "orchestrator_config_from_env",

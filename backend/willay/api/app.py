@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from typing import Mapping
 
 from fastapi import FastAPI, HTTPException, Query
@@ -13,11 +14,13 @@ from willay.api.schemas import BacktestIn, EvaluateAlertIn
 from willay.api.agent_routes import register_agent_routes
 from willay.api.alert_routes import register_alert_routes
 from willay.api.card_routes import register_card_routes
+from willay.api.channel_routes import register_chat_channels, telegram_mode, webchat_mode
 from willay.api.demo_routes import register_demo_routes
 from willay.api.orchestration_routes import register_orchestration_routes
 from willay.api.signals_routes import register_signals_routes
 from willay.api.telephony_routes import register_telephony_routes
 from willay.api.watch_routes import register_watch_routes
+from willay.api.whatsapp_routes import register_whatsapp_routes
 from willay.application.compose_alert_message import AlertMessageInput, compose_alert_message
 from willay.application.safe_point_text import PROPOSED_LABEL
 from willay.ports.templates import TemplateNotAvailable
@@ -69,7 +72,17 @@ def _evaluation_to_dict(evaluation: TierEvaluation) -> dict:
 
 def create_app(deps: AppDependencies | None = None) -> FastAPI:
     deps = deps or default_dependencies()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if deps.telegram is not None:  # long polling starts only when TELEGRAM_BOT_TOKEN is set
+            deps.telegram.start()
+        yield
+        if deps.telegram is not None:
+            deps.telegram.stop()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Willay Relaves API",
         version="0.2.0",
         description=(
@@ -185,6 +198,9 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
             "synthetic_data": deps.synthetic,
             "data_mode": deps.data_mode,
             "calls_mode": deps.calls_mode,
+            "messaging_mode": deps.messaging_mode,
+            "telegram_mode": telegram_mode(deps),
+            "webchat_mode": webchat_mode(deps),
         }
 
     @app.get("/sites")
@@ -329,6 +345,8 @@ def create_app(deps: AppDependencies | None = None) -> FastAPI:
     register_agent_routes(app, deps, lambda: ranked_sites())
     register_orchestration_routes(app, deps, lambda: ranked_sites(), find_ranked)
     register_telephony_routes(app, deps)
+    register_whatsapp_routes(app, deps)
+    register_chat_channels(app, deps)
     register_signals_routes(app, deps)
     register_demo_routes(app, deps, lambda: ranked_sites(), find_ranked)
 

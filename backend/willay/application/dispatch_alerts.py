@@ -20,11 +20,17 @@ from willay.domain.exposure import ExposureResult
 from willay.ports.alert_ledger import AlertLedgerPort
 from willay.ports.calls import CallError, CallNotAllowed, CallPort
 from willay.ports.llm import LLMPort
-from willay.ports.messaging import MessagingPort
+from willay.ports.messaging import InteractiveMessagingPort, MessagingPort
 from willay.ports.templates import ReviewedTemplatesPort, TemplateNotAvailable
 
 HOUSEHOLD_TIERS = (AlertTier.PREPARATION, AlertTier.ATTENTION, AlertTier.EVACUATION)
 CALL_TIERS = (AlertTier.ATTENTION, AlertTier.EVACUATION)
+# Reply buttons on channels that support them; the button id carries the alert id so a tap is unambiguous.
+SAFE_BUTTON, HELP_BUTTON = ("SAFE", "Estoy a salvo"), ("HELP", "Necesito ayuda")
+TEMPLATE_ONLY_NOTE = (
+    "outside the 24 h window: only the generic template was delivered, not this alert text "
+    "(the household must message the bot first)"
+)
 
 
 class DispatchRefused(ValueError):
@@ -99,6 +105,21 @@ def _open_case(
     return case
 
 
+def _send(messaging: MessagingPort, alert: HouseholdAlert) -> None:
+    """Deliver the alert text (with SAFE/HELP reply buttons when the channel supports them) and record the outcome."""
+    phone, text = alert.household.phone, alert.message_text
+    if not isinstance(messaging, InteractiveMessagingPort):
+        messaging.send(phone, text)
+        alert.message_status = "sent"
+        return
+    result = messaging.send_buttons(phone, text, [(f"{prefix}:{alert.id}", title) for prefix, title in (SAFE_BUTTON, HELP_BUTTON)])
+    alert.message_id = result.message_id
+    if result.used_template:
+        alert.message_status, alert.message_note = "template_only", TEMPLATE_ONLY_NOTE
+    else:
+        alert.message_status = "sent"
+
+
 def _call(calls: CallPort, alert: HouseholdAlert) -> tuple[ResponseKind, str]:
     """Place the call and return (response, note). Failures to reach the household count as NO_ANSWER."""
     try:
@@ -142,8 +163,7 @@ def dispatch_alerts(
             message_language=message.language,
         )
         try:
-            messaging.send(household.phone, message.text)
-            alert.message_status = "sent"
+            _send(messaging, alert)
         except Exception:  # one broken channel must not stop the rest of the loop
             alert.message_status = "failed"
 

@@ -1,5 +1,6 @@
-import { Cartesian3, type Viewer } from "cesium";
+import type { Viewer } from "cesium";
 import { highlightPath } from "./layers";
+import { flyToPlace } from "./mapView";
 import type { LayerName, UiAction } from "./types";
 
 /** What the assistant's `ui_actions` may do to the page. Each hook is wired in main.ts. */
@@ -16,9 +17,9 @@ export function executeUiActions(actions: UiAction[], context: UiContext): void 
   for (const action of actions) {
     switch (action.type) {
       case "fly_to":
-        context.viewer.camera.flyTo({
-          destination: Cartesian3.fromDegrees(action.lon, action.lat, action.height_m),
-          duration: FLY_DURATION_S,
+        flyToPlace(context.viewer, action.lon, action.lat, {
+          rangeM: Math.min(60_000, Math.max(8_000, action.height_m * 0.6)),
+          durationS: FLY_DURATION_S,
         });
         break;
       case "highlight_site":
