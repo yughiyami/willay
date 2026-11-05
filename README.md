@@ -5,6 +5,56 @@ downstream of them, and raises alerts on three horizons: weeks to months, 1 to 3
 
 Built for the Meta Global AI Developer Hackathon.
 
+**The warning that answers back.** Peru already publishes strong forecasts (ENFEN, SENAMHI) and risk maps
+(CENEPRED/SIGRID). Nobody measures who *received* a warning and who *moved*. Willay consumes those official
+sources and adds the missing layer: delivery to households on the messaging apps they already use, and a
+one-tap confirmation ("I'm safe" / "I need help") that becomes data for the operator.
+
+![Operator console](docs/media/console.png)
+
+## Built during the hackathon
+
+Everything in this repository was written during the hackathon (Oct 31 – Nov 4, 2026); the git history starts on
+Oct 31. Not built by us: the official public data (ENFEN, SENAMHI, CENEPRED/SIGRID, INDECI, INEI, OpenStreetMap)
+and the map tiles (Esri imagery, AWS Terrain Tiles).
+
+## How Meta's models are used
+
+| Model (Meta Model API) | Role in Willay | Where |
+|---|---|---|
+| **Muse Spark** | Reads ENFEN/SENAMHI bulletins into a strict JSON schema; four specialist agents; citizen assistant that answers households in plain Spanish | `application/enfen_ingest.py`, `application/orchestration/`, `application/citizen_assistant.py` |
+| **Muse Wonder** | Planner: decides each turn which agent and tool to call (hazard analyst, river watcher, dispatcher, communicator) | `application/orchestration/` |
+| **SAM 3.1** | Segments water and a staff gauge in community video to measure the water rise (an aid, never a trigger) | `application/watch_clip.py`, `docs/media/gauge_validation` |
+| **Muse Voice Transcribe** | Operator voice queries and household voice notes | `adapters/meta_model_api.py`, `application/whatsapp_inbound.py` |
+| **Muse Image** | Pictographic evacuation cards for low-literacy homes | `application/evacuation_card.py` |
+
+The adapter is `backend/willay/adapters/meta_model_api.py`; every call is traced in the console and logged with
+its cost (`docs/META_API.md`).
+
+## End-to-end flow
+
+1. Official signal (ENFEN N°19, SENAMHI warning) → Muse Spark extracts it.
+2. Muse Wonder plans; agents analyse hazard, watch the river (SAM 3.1), propose a dispatch.
+3. **Deterministic rules** (`domain/tiers.py`) set the level; the model can explain, never escalate.
+4. **A human operator confirms** the evacuation in the console.
+5. Households receive the alert: WhatsApp Cloud API adapter (`docs/WHATSAPP.md`), live Telegram bot and a
+   WhatsApp-style web chat (`docs/TELEGRAM_WEBCHAT.md`), with buttons, voice and location.
+6. "I need help" opens a case on the operator's 3D map.
+
+## Quick start
+
+```bash
+# backend (Python 3.13)
+cd backend && ../.venv/Scripts/python -m uvicorn willay.api.app:app --port 8000
+# console + citizen chat (Node 20+)
+cd web && npm install && npm run dev   # http://localhost:5173  ·  /chat.html
+# tests
+cd backend && ../.venv/Scripts/python -m pytest -q
+```
+
+Meta, WhatsApp and Telegram keys go only in `.env` (see `.env.example`); without them every channel and model call
+runs in a clearly labelled simulated/offline mode, so the demo works with no keys.
+
 > **Honesty notes**
 >
 > - Willay Relaves **complements** the official SENAMHI, INDECI and ENFEN alerts. It **never replaces** them.
